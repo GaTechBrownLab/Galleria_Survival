@@ -54,3 +54,10 @@ po/*~
 # RStudio Connect folder
 rsconnect/
 >>>>>>> 5cc7b396855db48c5291ff814b24f0d4adb90a56
+
+.DS_Store
+Palettes.R
+*.pdf
+*.png
+*.svg
+figures/
