@@ -8,6 +8,8 @@ library(MASS)
 library(mgcv)
 library(cowplot)
 
+library(survival)
+
 # SEM
 library(lavaan)
 library(blavaan) #bayesian lavaan
@@ -20,16 +22,9 @@ library(ggdag)
 
 library(brglm2) #biased-reduced regression 
 
-library(gratia) #for estimating inflection points
+#library(gratia) #for estimating inflection points
 
 library(tidybayes)
-
-# Better fonts 
-install.packages("extrafont")
-library(extrafont)
-extrafont::font_import()   # only once — can take a while!
-extrafont::loadfonts()
-
 
 # Theme 
 # panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
@@ -68,10 +63,15 @@ control <- read.table("data/control_survival.csv", header = T, sep = ",", dec ="
 
 # Calculate survival proportion
 data <- data %>%
-         mutate(total = total - 2, 
-         dead = dead - 2, 
-         alive = alive - 2, 
-         survival = alive/total)
+  mutate(
+    total = total - 2,
+    alive = alive - 2,
+    survival = alive / total)
+
+LT50 <- approx(x = data$survival, y = data$time, xout = 0.5)$y #22h
+
+fit <- survfit(Surv(time, survival) ~ 1, data = data)
+summary(fit)
 
 control <- control %>%
   mutate(survival = alive/total)
@@ -96,7 +96,7 @@ params <- coef(fit)
 a <- params["a"]
 b <- params["b"]
 
-LT50 <- (1 / b) * log(1 + (log(2) * b / a))
+LT50 <- (1 / b) * log(1 + (log(2) * b / a)) #22
 
 # Add the fitted Gompertz curve to the data
 data$fitted_survival <- gompertz_model(data$time, a, b)
@@ -116,7 +116,7 @@ surv <- ggplot(plot_data, aes(x = time, y = survival)) +
   geom_point(data = control, aes(y = survival, fill = group), size = 2, shape = 21) +
   annotate("segment", x = 1, xend = 48, y = 1, yend = 1, color = "grey50", size = 1, linetype = "dashed") +
   geom_point(data = data, aes(y = survival, fill = group), size = 2, shape = 21) +
-  geom_line(data = gompertz_fit, aes(x = time, y = fitted_survival, linetype = group, color = group), size = 1) +
+  geom_line(data = gompertz_fit, aes(x = time, y = fitted_survival, linetype = group, color = group), linewidth = 1) +
   labs(
     x = "Time (h)",
     y = "Survival Proportion",
@@ -124,7 +124,7 @@ surv <- ggplot(plot_data, aes(x = time, y = survival)) +
   ) +
   mytheme +
   scale_fill_manual(
-    values = c("Control" = "#C993A2", "Infected" = "#94aec2"),
+    values = c("Control" = "grey70", "Infected" = "grey20"),
     labels = c("Control", "Infected")
   ) +
   scale_linetype_manual(
@@ -182,107 +182,131 @@ burden_tidy <- burden %>%
          scaled_melanization = scale(melanization), 
          scaled_cfu = scale(log_CFU),
          scaled_immune_morb = scale(activity + melanization)
-         )
+         ) 
+  
+burden_clean <- burden_tidy %>%
+  ungroup() %>%
+  filter(cfu > 0, cfu < 1e6) %>%
+  filter(Time < 48)
 
-linear_model <- lm(log_CFU ~ Time, 
-                      data = burden_tidy)
+burden_tidy_av <- burden_clean %>% 
+  group_by(Time) %>% 
+  reframe(cfu = mean(cfu, na.rm = T), log_cfu = mean(log_CFU))
+
+linear_model <- lm(cfu ~ Time, data = burden_clean)
 summary(linear_model)
 AIC(linear_model)
 
-# Define the logistic function
-logistic_model <- nls(log_CFU ~ K / (1 + exp(-r * (Time - t0))), 
-                      data = burden_tidy,
-                      start = list(K = max(burden_tidy$log_CFU), 
-                                   r = 0.1, 
-                                   t0 = mean(burden_tidy$Time)),
-                      control = list(maxiter = 500))
+# Fit logistic model without t0 on raw cfu values 
+logistic_model_raw <- nlsLM(cfu ~ K / (1 + ((K - p0) / p0) * exp(-r * Time)),
+                            data = burden_clean,
+                            start = list(K = max(burden_tidy_av$cfu, na.rm = TRUE),
+                                         p0 = min(burden_tidy_av$cfu, na.rm = TRUE),
+                                         r = 0.1),
+                            control = list(maxiter = 1000))
+
+# log fit
+logistic_logfit <- nlsLM(log_CFU ~ log10(K / (1 + ((K - p0) / p0) * exp(-r * Time))),
+                         data = burden_clean,
+                         start = list(K = max(burden_tidy_av$cfu, na.rm = TRUE),
+                                      p0 = min(burden_tidy_av$cfu, na.rm = TRUE),
+                                      r = 0.1),
+                         lower = c(K = 1000, p0 = 0, r = 0.01),
+                         upper = c(K = 1e6, p0 = 100, r = 2),
+                         control = list(maxiter = 1000))
 
 # View model summary
-summary(logistic_model)
-AIC(logistic_model)
-rss <- sum(residuals(logistic_model)^2)
-tss <- sum((burden_tidy$log_CFU - mean(burden_tidy$log_CFU))^2)
+summary(logistic_logfit)
+AIC(logistic_logfit)
+rss <- sum(residuals(logistic_logfit)^2)
+tss <- sum((burden_clean$log_CFU - mean(burden_clean$log_CFU))^2)
 pseudo_r2 <- 1 - rss / tss
 
-# Generate more time points for a smooth curve
-time_seq_all <- data.frame(Time = seq(min(burden_tidy$Time), max(burden_tidy$Time), by = 0.1))
+pred_time <- data.frame(Time = seq(min(burden_clean$Time), max(burden_clean$Time), by = 0.1))
 
-# Predict values at these time points
-time_seq_all$log_CFU_fitted <- predict(logistic_model, newdata = time_seq_all)
-
-# Define function for bootstrapping
-boot_nls <- function(data, indices) {
-  df_boot <- data[indices, ]  # Resample with replacement
-  fit <- try(nls(log_CFU ~ K / (1 + exp(-r * (Time - t0))),
-                 data = df_boot,
-                 start = list(K = max(burden_tidy$log_CFU), 
-                              r = 0.1, 
-                              t0 = mean(burden_tidy$Time))), 
-             silent = TRUE)
+boot_preds <- function(data, indices) {
+  d <- data[indices, ]
+  fit <- tryCatch({
+    nlsLM(
+      log_CFU ~ log10(K / (1 + ((K - p0) / p0) * exp(-r * Time))),
+      data = d,
+      start = list(
+        K = quantile(d$cfu, 0.9, na.rm = TRUE),
+        p0 = quantile(d$cfu, 0.1, na.rm = TRUE),
+        r = 0.2
+      ),
+      lower = c(K = 100, p0 = 0.1, r = 0.01),
+      upper = c(K = 1e6, p0 = 5e3, r = 2),
+      control = list(maxiter = 1000)
+    )
+  }, error = function(e) NULL)
   
-  if (inherits(fit, "try-error")) return(rep(NA, 3))  # Skip failed fits
-  return(coef(fit))  # Return model parameters
+  if (is.null(fit)) return(rep(NA, 3))
+  coef(fit)  # returns K, p0, r
 }
 
-# Run bootstrapping (adjust number of iterations if needed)
-set.seed(42)
-boot_results <- boot(burden_tidy, boot_nls, R = 1000)
+set.seed(123)
+boot_curve <- boot(data = burden_clean, statistic = boot_preds, R = 1000)
 
-# Store predicted values for each bootstrap iteration
-boot_predictions <- matrix(NA, nrow = length(time_seq_all$Time), ncol = nrow(boot_results$t))
+# Extract the K estimates (assuming they are the first column)
+boot_K <- boot_curve$t[, 1]
+# Remove failed fits (NAs)
+boot_K <- boot_K[!is.na(boot_K)]
+# Compute 95% confidence interval using percentiles
+ci_K <- quantile(boot_K, probs = c(0.025, 0.975), na.rm = TRUE)
+print(ci_K)
 
-# Generate predictions for each bootstrap sample
-for (i in 1:nrow(boot_results$t)) {
-  K_i <- boot_results$t[i, 1]  
-  r_i <- boot_results$t[i, 2]  
-  t0_i <- boot_results$t[i, 3]  
-  boot_predictions[, i] <- K_i / (1 + exp(-r_i * (time_seq_all$Time - t0_i)))
-}
+boot_matrix <- boot_curve$t
+valid_matrix <- boot_matrix[apply(boot_matrix, 1, function(row) {
+  !any(is.na(row)) && (max(row) - min(row)) > 1  # only keep replicates with real slope
+}), ]
 
-# Compute the final fitted curve using median
-time_seq_all$log_CFU_fitted_median <- apply(boot_predictions, 1, median, na.rm = TRUE)
+# Generate predictions from bootstrap parameter sets
+boot_prediction_curves <- apply(valid_matrix, 1, function(params) {
+  K <- params[1]; p0 <- params[2]; r <- params[3]
+  log10(K / (1 + ((K - p0) / p0) * exp(-r * pred_time$Time)))
+})
 
-# Compute 95% confidence intervals at each time point
-time_seq_all$log_CFU_lower <- apply(boot_predictions, 1, function(x) quantile(x, 0.025, na.rm = TRUE))
-time_seq_all$log_CFU_upper <- apply(boot_predictions, 1, function(x) quantile(x, 0.975, na.rm = TRUE))
+# boot_prediction_curves is now a matrix: rows = timepoints, cols = bootstrap replicates
+boot_prediction_curves <- t(boot_prediction_curves)  # transpose so timepoints are columns
 
-# Plot with corrected confidence intervals
-# Create a label in time_seq for the logistic fit
-time_seq_all$group <- "Logistic fit"
+# Calculate CI and median fit at each timepoint
+ci_bounds <- apply(boot_prediction_curves, 2, quantile, probs = c(0.025, 0.975))
+median_fit <- apply(boot_prediction_curves, 2, median)
 
-bact <- ggplot(burden_tidy, aes(x = Time, y = log_CFU)) +
+# Add to pred_time
+pred_time$lower <- ci_bounds[1, ]
+pred_time$upper <- ci_bounds[2, ]
+pred_time$fit   <- median_fit
+
+# Plot
+pred_time$group <- "Logistic fit" 
+
+bact <- ggplot(burden_clean, aes(x = Time, y = log_CFU)) +
   geom_jitter(aes(fill = status), size = 2, shape = 21, alpha = 1, color = "black") +
-  mytheme +
-  geom_ribbon(data = time_seq_all, aes(x = Time, ymin = log_CFU_lower, ymax = log_CFU_upper), 
-              inherit.aes = FALSE, fill = "grey", alpha = 0.3) + 
-  geom_line(data = time_seq_all, aes(x = Time, y = log_CFU_fitted, linetype = group, color = group), 
-            inherit.aes = FALSE, size = 1) +  
+  geom_ribbon(data = pred_time, aes(x = Time, ymin = lower, ymax = upper), 
+               fill = "gray80", alpha = 0.5, inherit.aes = FALSE) +
+  geom_line(data = pred_time, aes(x = Time, y = fit, linetype = group), 
+            color = "black", size = 1.2, inherit.aes = FALSE) +
   xlab("Time (h)") +
   ylab("log(Colony Forming Units)") +
-  scale_fill_manual(values = c("#19798b", "#ee9b43")) +
-  scale_linetype_manual(
-    values = c("Logistic fit" = "solid"),
-    labels = c("Logistic fit")
-  ) +
-  scale_color_manual(
-    values = c("Logistic fit" = "black"),
-    labels = c("Logistic fit")
-  ) +
-  guides(
-    fill = guide_legend(order = 1),  
-    linetype = guide_legend(order = 2),
-    color = "none"
-  ) +  
+  scale_fill_manual(values = c("Alive" = "#19798b", "Dead" = "#ee9b43")) +
+  guides(fill = guide_legend(order = 1)) +
+  theme_minimal() +
   theme(legend.position = c(.2, .8)) +
-  scale_x_continuous(breaks = c(4, 8, 12, 16, 20, 24, 28, 32, 36, 48))
+  scale_x_continuous(breaks = c(4, 8, 12, 16, 20, 24, 28, 32, 36)) +
+  mytheme
 
-ggsave("figures/bacterial_burden.pdf", plot = bact, width = 5.5, height = 5.5, units = "in", dpi = 300)
+#ggsave("figures/bacterial_burden.pdf", plot = bact, width = 5.5, height = 5.5, units = "in", dpi = 300)
+
+#########################################################################################################
+# Health variables 
 
 # Fit ordinal regression
-fit <- polr(factor(melanization) ~ Time, data = burden_tidy, method = "logistic")
+fit <- polr(factor(melanization) ~ Time, data = burden_clean, method = "logistic")
 
 # Null model (intercept only)
-fit_null_mel <- polr(factor(melanization) ~ 1, data = burden_tidy, method = "logistic")
+fit_null_mel <- polr(factor(melanization) ~ 1, data = burden_clean, method = "logistic")
 
 # Calculate McFadden's pseudo-R²
 resid_dev_mel <- deviance(fit)
@@ -298,27 +322,21 @@ expected_melanization <- rowSums(probabilities * matrix(rep(0:4, each = nrow(pro
                                                         nrow = nrow(probabilities), byrow = FALSE))
 
 # Reverse predicted melanization scale too
-burden_tidy$predicted_melanization <- expected_melanization
+burden_clean$predicted_melanization <- expected_melanization
 
 # Fit GAM for smooth prediction
-gam_fit <- gam(predicted_melanization ~ s(Time, k = 5), data = burden_tidy)
+gam_fit <- gam(predicted_melanization ~ s(Time, k = 5), data = burden_clean)
 summary(gam_fit)
 
 # Generate smooth predictions
-time_seq <- data.frame(Time = seq(min(burden_tidy$Time), max(burden_tidy$Time), length.out = 100))
+time_seq <- data.frame(Time = seq(min(burden_clean$Time), max(burden_clean$Time), length.out = 100))
 time_seq$smoothed_melanization <- predict(gam_fit, newdata = time_seq)
-
-# Predict derivatives
-fd_mel <- derivatives(gam_fit)
-
-# Find inflection point as time of steepest slope:
-inflection_time_mel <- fd_mel$Time[which.max(abs(fd_mel$.derivative))]
 
 # Plot
 # Create a dataset for the GAM fit with a label
 time_seq$group <- "GAM fit" 
 
-melanization_plot <- ggplot(burden_tidy, aes(x = Time, y = melanization)) +
+melanization_plot <- ggplot(burden_clean, aes(x = Time, y = melanization)) +
   geom_jitter(aes(fill = status), size = 2, shape = 21, alpha = 1, color = "black") +
   geom_line(data = time_seq, aes(x = Time, y = smoothed_melanization, linetype = group, color = group), size = 1) +
   scale_fill_manual(values = c("#19798b", "#ee9b43")) +
@@ -340,10 +358,10 @@ melanization_plot <- ggplot(burden_tidy, aes(x = Time, y = melanization)) +
   theme(legend.position = c(.8, .2))  
 
 # Fit ordinal regression
-fit_act <- polr(factor(activity) ~ Time, data = burden_tidy, method = "logistic")
+fit_act <- polr(factor(activity) ~ Time, data = burden_clean, method = "logistic")
 
 # Null model (intercept only)
-fit_null <- polr(factor(activity) ~ 1, data = burden_tidy, method = "logistic")
+fit_null <- polr(factor(activity) ~ 1, data = burden_clean, method = "logistic")
 
 # Calculate McFadden's pseudo-R²
 resid_dev <- deviance(fit_act)
@@ -360,24 +378,18 @@ expected_activity <- rowSums(probabilities_act * matrix(rep(0:3, each = nrow(pro
                                                         nrow = nrow(probabilities_act), byrow = FALSE))
 
 # Reverse predicted melanization scale too
-burden_tidy$predicted_activity <- expected_activity
+burden_clean$predicted_activity <- expected_activity
 
 # Fit GAM for smooth prediction
-gam_fit_act <- gam(predicted_activity ~ s(Time, k = 5), data = burden_tidy)
+gam_fit_act <- gam(predicted_activity ~ s(Time, k = 5), data = burden_clean)
 summary(gam_fit_act)
 
-# Predict derivatives
-fd <- derivatives(gam_fit_act)
-
-# Find inflection point as time of steepest slope:
-inflection_time <- fd$Time[which.max(abs(fd$.derivative))]
-
 # Generate smooth predictions
-time_seq_act <- data.frame(Time = seq(min(burden_tidy$Time), max(burden_tidy$Time), length.out = 100))
+time_seq_act <- data.frame(Time = seq(min(burden_clean$Time), max(burden_clean$Time), length.out = 100))
 time_seq_act$smoothed_activity <- predict(gam_fit_act, newdata = time_seq_act)
 
 # Plot
-activity_plot <- ggplot(burden_tidy, aes(x = Time, y = activity)) +
+activity_plot <- ggplot(burden_clean, aes(x = Time, y = activity)) +
   geom_jitter(aes(fill = status), size = 2, shape = 21, alpha = 1, color = "black") +
   geom_line(data = time_seq_act, aes(x = Time, y = smoothed_activity), 
             color = "black", size = 1) +  # Smoothed curve
@@ -387,150 +399,137 @@ activity_plot <- ggplot(burden_tidy, aes(x = Time, y = activity)) +
   theme(legend.position = "none")
 
 # Arrange the two small plots together first
-small_plots <- plot_grid(activity_plot, melanization_plot, surv, ncol = 3, align = "h", labels = "AUTO")
+small_plots <- plot_grid(surv, activity_plot, melanization_plot, ncol = 3, align = "h", labels = "AUTO")
 ggsave("figures/small_plots.pdf", plot = small_plots, width = 13, height = 4, units = "in", dpi = 300)
-
-#################
-# Time of death 
-death <- ggplot(burden_tidy, aes(x = time_to_death_h, y = log10(cfu))) +
-  geom_point(size = 2, shape =21, alpha = 0.5, color = "black", fill = "#ee9b43") +
-  mytheme +
-  stat_smooth(method = "lm", color = "grey25") + 
-  ylab("log(Colony Forming Units)") +
-  xlab("Time of death")
-
-ggsave("figures/time_death.pdf", plot = death, width = 5.5, height = 5.5, units = "in", dpi = 300)
 
 #################
 # Test how interpretations change after selectively fitting the models to living individuals only 
 
 # Subset data to only living individuals
-burden_tidy_alive <- burden_tidy %>% filter(status == "Alive")
+burden_tidy_alive <- burden_clean %>% filter(status == "Alive")
+burden_av_alive   <- burden_tidy_alive %>% 
+  group_by(Time) %>% 
+  reframe(cfu = mean(cfu, na.rm = T), log_cfu = mean(log_CFU))
 
-# Fit a linear model to only living individuals
-linear_model_alive <- lm(log_CFU ~ Time, data = burden_tidy_alive)
+linear_model_alive <- lm(log10(cfu) ~ log10(Time), data = burden_tidy_alive)
 summary(linear_model_alive)
+AIC(linear_model_alive)
 
-# Define the logistic function
-logistic_model_alive <- nls(log_CFU ~ K / (1 + exp(-r * (Time - t0))), 
-                      data = burden_tidy_alive,
-                      start = list(K = max(burden_tidy_alive$log_CFU), 
-                                   r = 0.1, 
-                                   t0 = mean(burden_tidy_alive$Time)),
-                      control = list(maxiter = 500))
+# log fit
+logistic_logfit_a <- nlsLM(log_CFU ~ log10(K / (1 + ((K - p0) / p0) * exp(-r * Time))),
+                         data = burden_tidy_alive,
+                         start = list(K = max(burden_av_alive$log_cfu, na.rm = TRUE),
+                                      p0 = min(burden_av_alive$log_cfu, na.rm = TRUE),
+                                      r = 0.1),
+                         control = list(maxiter = 1000))
 
 # View model summary
-summary(logistic_model_alive)
+summary(logistic_logfit_a)
+AIC(logistic_logfit_a)
+rss <- sum(residuals(logistic_logfit_a)^2)
+tss <- sum((burden_tidy_alive$log_CFU - mean(burden_tidy_alive$log_CFU))^2)
+pseudo_r2 <- 1 - rss / tss
 
-AIC_linear <- AIC(linear_model_alive)
-AIC_logistic <- AIC(logistic_model_alive)
+pred_time_a <- data.frame(Time = seq(min(burden_tidy_alive$Time), max(burden_tidy_alive$Time), by = 0.1))
 
-rss2 <- sum(residuals(logistic_model_alive)^2)
-tss2 <- sum((burden_tidy_alive$log_CFU - mean(burden_tidy_alive$log_CFU))^2)
-pseudo_r2_2 <- 1 - rss2 / tss2
-
-# Plot logistic one 
-
-# Generate more time points for a smooth curve
-time_seq_alive <- data.frame(Time = seq(min(burden_tidy_alive$Time), max(burden_tidy_alive$Time), by = 0.1))
-
-# Predict values at these time points
-time_seq_alive$log_CFU_fitted <- predict(logistic_model_alive, newdata = time_seq_alive)
-
-# Define function for bootstrapping
-boot_nls_alive <- function(data, indices) {
-  df_boot <- data[indices, ]  # Resample with replacement
-  fit <- try(nls(log_CFU ~ K / (1 + exp(-r * (Time - t0))),
-                 data = df_boot,
-                 start = list(K = max(burden_tidy_alive$log_CFU), 
-                              r = 0.1, 
-                              t0 = mean(burden_tidy_alive$Time))), 
-             silent = TRUE)
+boot_preds <- function(data, indices) {
+  d <- data[indices, ]
+  fit <- tryCatch({
+    nlsLM(
+      log_CFU ~ log10(K / (1 + ((K - p0) / p0) * exp(-r * Time))),
+      data = d,
+      start = list(
+        K = quantile(d$cfu, 0.9, na.rm = TRUE),
+        p0 = quantile(d$cfu, 0.1, na.rm = TRUE),
+        r = 0.2
+      ),
+      lower = c(K = 100, p0 = 0.1, r = 0.01),
+      upper = c(K = 1e5, p0 = 5e3, r = 2),
+      control = list(maxiter = 1000)
+    )
+  }, error = function(e) NULL)
   
-  if (inherits(fit, "try-error")) return(rep(NA, 3))  # Skip failed fits
-  return(coef(fit))  # Return model parameters
+  if (is.null(fit)) return(rep(NA, 3))
+  coef(fit)  # returns K, p0, r
 }
 
-# Run bootstrapping (adjust number of iterations if needed)
-set.seed(43)
-boot_results_alive <- boot(burden_tidy_alive, boot_nls_alive, R = 1000)
+set.seed(124)
+boot_curve_a <- boot(data = burden_tidy_alive, statistic = boot_preds, R = 1000)
 
-# Store predicted values for each bootstrap iteration
-boot_predictions_alive <- matrix(NA, nrow = length(time_seq_alive$Time), ncol = nrow(boot_results_alive$t))
+# Extract the K estimates (assuming they are the first column)
+boot_K <- boot_curve_a$t[, 1]
+# Remove failed fits (NAs)
+boot_K <- boot_K[!is.na(boot_K)]
+# Compute 95% confidence interval using percentiles
+ci_K <- quantile(boot_K, probs = c(0.025, 0.975), na.rm = TRUE)
+print(ci_K)
 
-# Generate predictions for each bootstrap sample
-for (i in 1:nrow(boot_results_alive$t)) {
-  K_i <- boot_results_alive$t[i, 1]  
-  r_i <- boot_results_alive$t[i, 2]  
-  t0_i <- boot_results_alive$t[i, 3]  
-  boot_predictions_alive[, i] <- K_i / (1 + exp(-r_i * (time_seq_alive$Time - t0_i)))
-}
+boot_matrix_a <- boot_curve_a$t
+valid_matrix_a <- boot_matrix_a[apply(boot_matrix_a, 1, function(row) {
+  !any(is.na(row)) && (max(row) - min(row)) > 1  # only keep replicates with real slope
+}), ]
 
-boot_matrix_alive <- boot_results_alive$t
-boot_matrix_alive <- boot_matrix_alive[, colSums(is.na(boot_matrix_alive)) == 0]  # Remove failed bootstrap runs
+# Generate predictions from bootstrap parameter sets
+boot_prediction_curves_a <- apply(valid_matrix_a, 1, function(params) {
+  K <- params[1]; p0 <- params[2]; r <- params[3]
+  log10(K / (1 + ((K - p0) / p0) * exp(-r * pred_time_a$Time)))
+})
 
-# Compute 95% confidence intervals at each time point
-time_seq_alive$log_CFU_fitted_median <- apply(boot_predictions_alive, 1, median, na.rm = TRUE)
-time_seq_alive$log_CFU_lower <- apply(boot_predictions_alive, 1, function(x) quantile(x, 0.025, na.rm = TRUE))
-time_seq_alive$log_CFU_upper <- apply(boot_predictions_alive, 1, function(x) quantile(x, 0.975, na.rm = TRUE))
+# boot_prediction_curves is now a matrix: rows = timepoints, cols = bootstrap replicates
+boot_prediction_curves_a <- t(boot_prediction_curves_a)  # transpose so timepoints are columns
 
-# Plot with corrected confidence intervals
-# Create a label in time_seq for the logistic fit
-time_seq_alive$group <- "Logistic fit"
+# Calculate CI and median fit at each timepoint
+ci_bounds <- apply(boot_prediction_curves_a, 2, quantile, probs = c(0.025, 0.975))
+median_fit <- apply(boot_prediction_curves_a, 2, median)
 
-bact2 <- ggplot(burden_tidy, aes(x = Time, y = log_CFU)) +
+# Add to pred_time
+pred_time_a$lower <- ci_bounds[1, ]
+pred_time_a$upper <- ci_bounds[2, ]
+pred_time_a$fit   <- median_fit
+
+
+# Plot
+bact2 <- ggplot(burden_clean, aes(x = Time, y = log_CFU)) +
   geom_jitter(aes(fill = status), size = 2, shape = 21, alpha = 1, color = "black") +
-  mytheme +
-  geom_ribbon(data = time_seq_alive, aes(x = Time, ymin = log_CFU_lower, ymax = log_CFU_upper), 
-              inherit.aes = FALSE, fill = "#19798b", alpha = 0.3) + 
-  geom_line(data = time_seq_alive, aes(x = Time, y = log_CFU_fitted, linetype = group, color = group), 
-            inherit.aes = FALSE, size = 1, color = "#19798b", , linetype = "dashed") +  
-  geom_ribbon(data = time_seq_all, aes(x = Time, ymin = log_CFU_lower, ymax = log_CFU_upper), 
-              inherit.aes = FALSE, fill = "#ee9b43", alpha = 0.3) + 
-  geom_line(data = time_seq_all, aes(x = Time, y = log_CFU_fitted, linetype = group, color = group), 
-            inherit.aes = FALSE, size = 1, color = "#ee9b43") +  
+  geom_ribbon(data = pred_time, aes(x = Time, ymin = lower, ymax = upper), 
+              fill = "#ee9b43", alpha = 0.3, inherit.aes = FALSE) +
+  geom_line(data = pred_time, aes(x = Time, y = fit, linetype = group), 
+            color = "#b80422", size = 1.2, inherit.aes = FALSE) +
+  geom_ribbon(data = pred_time_a, aes(x = Time, ymin = lower, ymax = upper), 
+              fill = "#19798b", alpha = 0.3, inherit.aes = FALSE) +
+  geom_line(data = pred_time_a, aes(x = Time, y = fit), 
+            color = "#19798b", linetype = "dashed", size = 1.2, inherit.aes = FALSE) +
   xlab("Time (h)") +
   ylab("log(Colony Forming Units)") +
-  scale_fill_manual(values = c("#19798b", "#ee9b43")) +
-  scale_linetype_manual(
-    values = c("Logistic fit" = "solid"),
-    labels = c("Logistic fit")
-  ) +
-  scale_color_manual(
-    values = c("Logistic fit" = "black"),
-    labels = c("Logistic fit")
-  ) +
-  guides(
-    fill = guide_legend(order = 1),  
-    linetype = guide_legend(order = 2),
-    color = "none"
-  ) +  
-  theme(legend.position = c(.2, .8)) +
-  scale_x_continuous(breaks = c(4, 8, 12, 16, 20, 24, 28, 32, 36, 48))
+  scale_fill_manual(values = c("Alive" = "#19798b", "Dead" = "#ee9b43")) +
+  guides(fill = guide_legend(order = 1)) +
+  scale_x_continuous(breaks = c(4, 8, 12, 16, 20, 24, 28, 32, 36)) +
+  mytheme+
+  theme(legend.position = c(.2, .8))
 
-ggsave("figures/bacterial_burden_aliveDead.pdf", plot = bact2, width = 5.5, height = 5, units = "in", dpi = 300)
+#ggsave("figures/bacterial_burden_aliveDead.pdf", plot = bact2, width = 5.5, height = 5, units = "in", dpi = 300)
 
 # Pathogen growth vs. health measures
 
-cfuMel <- ggplot(burden_tidy, aes(x = melanization, y = log10(cfu))) +
+cfuMel <- ggplot(burden_clean, aes(y = melanization, x = log10(cfu))) +
   geom_jitter(size = 2, shape =21, color = "black", aes(fill = status)) +
   mytheme +
-  stat_smooth(method = "gam", color = "grey25") + 
-  ylab("log(CFU)") +
-  xlab("Melanization")+
+  #stat_smooth(method = "gam", color = "grey25") + 
+  xlab("log(CFU)") +
+  ylab("Melanization")+
   scale_fill_manual(values = c("#19798b", "#ee9b43"))+
   theme(legend.position = "none")
 
-cfuAct <- ggplot(burden_tidy, aes(x = activity, y = log10(cfu))) +
+cfuAct <- ggplot(burden_clean, aes(y = activity, x = log10(cfu))) +
   geom_jitter(size = 2, shape = 21, color = "black", aes( fill = status)) +
   mytheme +
   #stat_smooth(method = "gam", color = "grey25") + 
-  ylab("log(CFU)") +
-  xlab("Activity")+
+  xlab("log(CFU)") +
+  ylab("Activity")+
   scale_fill_manual(values = c("#19798b", "#ee9b43"))+
   theme(legend.position = "none")
 
-cfuActMel <- ggplot(burden_tidy, aes(x = melanization, y = activity)) +
+cfuActMel <- ggplot(burden_clean, aes(x = melanization, y = activity)) +
   geom_jitter(size = 2, shape = 21, color = "black", aes( fill = status)) +
   mytheme +
   #stat_smooth(method = "gam", color = "grey25") + 
@@ -541,7 +540,7 @@ cfuActMel <- ggplot(burden_tidy, aes(x = melanization, y = activity)) +
 
 small <- plot_grid(cfuAct, cfuMel, ncol = 1, align = "v", labels = c("C", "D"), hjust = -0.5, vjust=1.5)
 big <- plot_grid(bact2, small, ncol = 2, align = "v", labels = c("A", ""), rel_widths = c(2, 1.2), hjust = -0.5, vjust=1.5)
-ggsave("figures/bacterial_burden_aliveDead.pdf", plot = big, width = 9, height = 4.5, units = "in", dpi = 300)
+#ggsave("figures/bacterial_burden_aliveDead.pdf", plot = big, width = 9, height = 4.5, units = "in", dpi = 300)
 
 ######DAG######
 
@@ -570,19 +569,18 @@ ggdag(dag)+
 
 
 # Systematical testing 
-summary(lm(scaled_cfu    ~ scaled_time, data = burden_tidy))
-summary(lm(scaled_health ~ scaled_cfu + scaled_time, data = burden_tidy))
+summary(lm(scaled_cfu    ~ scaled_time, data = burden_clean))
+summary(lm(scaled_health ~ scaled_cfu + scaled_time, data = burden_clean))
 
 # bidirection?
-summary(lm(scaled_cfu    ~ scaled_health + scaled_time, data = burden_tidy))
+summary(lm(scaled_cfu    ~ scaled_health + scaled_time, data = burden_clean))
 
-summary(glm(survival     ~ scaled_time, data = burden_tidy, family = binomial(), method = "brglmFit"))
-summary(glm(survival     ~ scaled_health, family = binomial, data = burden_tidy, method = "brglmFit"))
-summary(glm(survival     ~ scaled_health + scaled_time, data = burden_tidy, family = binomial(), method = "brglmFit"))
-summary(glm(survival     ~ scaled_cfu, data = burden_tidy, family = binomial(), method = "brglmFit"))
-summary(glm(survival     ~ scaled_cfu + scaled_time, data = burden_tidy, family = binomial(), method = "brglmFit"))
-summary(glm(survival     ~ scaled_health + scaled_cfu + scaled_time, family = binomial(), data = burden_tidy, method = "brglmFit"))
-
+summary(glm(survival     ~ scaled_time, data = burden_clean, family = binomial(), method = "brglmFit"))
+summary(glm(survival     ~ scaled_health, family = binomial, data = burden_clean, method = "brglmFit"))
+summary(glm(survival     ~ scaled_health + scaled_time, data = burden_clean, family = binomial(), method = "brglmFit"))
+summary(glm(survival     ~ scaled_cfu, data = burden_clean, family = binomial(), method = "brglmFit"))
+summary(glm(survival     ~ scaled_cfu + scaled_time, data = burden_clean, family = binomial(), method = "brglmFit"))
+summary(glm(survival     ~ scaled_health + scaled_cfu + scaled_time, family = binomial(), data = burden_clean, method = "brglmFit"))
 
 #Nicer Dag diagram 
 
@@ -627,8 +625,8 @@ mediation_model <- '
   total := c_prime + (a * b)
 '
 
-burden_tidy$time_linear <- burden_tidy$scaled_time
-burden_tidy$time_squared <- burden_tidy$scaled_time^2
+burden_clean$time_linear <- burden_clean$scaled_time
+burden_clean$time_squared <- burden_clean$scaled_time^2
 
 model_quad <- '
   scaled_cfu ~ t1 * time_linear + t2 * time_squared
@@ -640,13 +638,7 @@ model_quad <- '
   total := c_prime + (a * b)
 '
 
-#fit_mediation <- sem(mediation_model, data = burden_tidy, ordered = "survival")
-#summary(fit_mediation, standardized = TRUE)
-
-#fit_boot <- sem(mediation_model, data = burden_tidy, se = "boot", bootstrap = 1000)
-#parameterEstimates(fit_boot, standardized = TRUE) %>% filter(op == ":=")
-
-fit_bayes_sem1 <- bsem(model_quad, data = burden_tidy, burnin = 1000, sample = 5000, n.chains = 3, 
+fit_bayes_sem1 <- bsem(model_quad, data = burden_clean, burnin = 1000, sample = 5000, n.chains = 3, 
                        save.lvs = TRUE)
 summary(fit_bayes_sem1)
 
@@ -691,9 +683,9 @@ effects_df <- data.frame(
            "3Indirect (a × b)", 
            "2Pathogen -> Survival (c')",
            "1Total (a × b + c')"),
-  estimate = c(0.89, -0.50, -0.53, 0.49, -0.42, -0.21, 0.01, -0.20),
-  lower = c(0.79, -0.59, -0.67, 0.45, -0.56, -0.28, -0.03, -0.27),
-  upper = c(0.99, -0.41, -0.39, 0.54, -0.29, -0.14, 0.06, -0.13)
+  estimate = c(0.905, -0.425, -0.609, 0.515, -0.434, -0.223, 0.037, -0.186),
+  lower =    c(0.79, -0.607, -0.866, 0.456, -0.643, -0.333,  -0.021,  --0.300),
+  upper =    c(1.050, -0.246, -0.341, 0.572, -0.228, -0.114, 0.095, -0.072)
 )
 
 effect_plot <- ggplot(effects_df, aes(y = path, x = estimate)) +
@@ -705,3 +697,186 @@ effect_plot <- ggplot(effects_df, aes(y = path, x = estimate)) +
   mytheme
 
 ggsave("figures/effect_plot.pdf", plot = effect_plot, width = 6.5, height = 5.5, units = "in", dpi = 300)
+
+#############################################################################################
+# Mapping
+
+normalize <- function(x) (x - min(x, na.rm = TRUE)) / (max(x, na.rm = TRUE) - min(x, na.rm = TRUE))
+
+a     = 4.139139e-05 
+b     = 0.4005271 
+p     = 10^pred_time$fit
+p_log = pred_time$fit
+p0    <- 4.449848e-01   # since original p0 is in log10
+K     <- 5.087321e+04   # K already in CFU
+r     <- 4.523319e-01
+
+time <- seq(1, 36, length.out = length(p))  # match length
+m_t = a*exp(b*time)
+m_p <- a * ((p * (p0 - K)) / (p0 * (p - K)))^(b / r)
+
+df <- tibble(
+  time = time,
+  m_t = m_t,
+  p = p,
+  m_p = m_p,
+  time_norm = normalize(time), 
+  m_t_norm = normalize(m_t), 
+  p_norm = normalize(p_log), 
+  m_p_norm = normalize(m_p)
+)
+
+# Plot all 3 panels
+p1 <- ggplot(df, aes(x = time_norm, y = p_norm)) +
+  geom_line(color = "#19798b", size = 1.2) +
+  labs(x = "Time (unit)", y = "Scaled p(t)")+
+  mytheme
+
+p2 <- ggplot(df, aes(x = time_norm, y = m_t_norm)) +
+  geom_line(color = "#ee9b43", size = 1.2) +
+  labs(x = "Time (unit)", y = "Scaled m(t)")+
+  mytheme
+
+p3 <- ggplot(df, aes(x = p_norm, y = m_p_norm)) +
+  geom_line(color = "#e76f51", size = 1.2) +
+  labs(x = "Scaled p(t)", y = "Scaled m(p)")+
+  mytheme
+
+plot_grid(p1, p2, p3, labels = c("A", "B", "C"), nrow = 1)
+
+# m_t 
+
+# Data to overlay 
+data_m_t <- data %>%
+  arrange(time) %>%
+  filter(time < 37) %>%
+  mutate(
+    m_t = log(lag(survival) / survival),
+    m_t = ifelse(m_t < 0, NA, m_t),
+    time_m = (lag(time) + time) / 2,
+    m_t_norm = normalize(m_t), 
+    time_norm = normalize(time_m)
+  )
+
+#p_t
+p_t_data <- tibble(p_t = normalize(burden_clean$log_CFU), 
+                   time = burden_clean$Time)
+
+m_t_data  <- tibble(m_t = data_m_t$m_t_norm, 
+                    time_norm = data_m_t$time_norm)
+
+m_p_data <- tibble(m_p = df$m_p_norm, 
+                   time_norm = df$time_norm, 
+                   p_t = df$p_norm)
+
+# Summarize pathogen burden at each time point (mean log10 CFU)
+burden_summary <- burden_clean %>%
+  group_by(Time) %>%
+  reframe(log_CFU_mean = mean(log_CFU, na.rm = TRUE), .groups = "drop", 
+          activity = mean(activity, na.rm = TRUE), 
+          melanization = mean(melanization, na.rm = TRUE), 
+          time = mean(Time, na.rm = TRUE))
+
+p4 <- ggplot(df, aes(x = time_norm, y = p_norm)) +
+  geom_line(color = "#19798b", size = 1.2) +
+  geom_jitter(data = burden_summary, aes(x = normalize(Time), y = normalize(log_CFU_mean)),
+             inherit.aes = FALSE, fill = "#19798b",size = 3, shape = 21, alpha = 0.7) +
+  labs(x = "Time (unit)", y = "Scaled p(t)") +
+  mytheme
+
+
+p5 <- ggplot(df, aes(x = time_norm, y = m_t_norm)) +
+  geom_line(color = "#ee9b43", size = 1.2) +
+  geom_point(data = m_t_data, aes(x = time_norm, y = m_t),
+             inherit.aes = FALSE, fill = "#ee9b43", size = 3, shape = 21, alpha = 0.7) +
+  
+  labs(x = "Time (unit)", y = "Scaled m(t)") +
+  mytheme
+
+# Interpolate both datasets over a common time vector
+
+# Common time vector (same as for m(t))
+time_common <- seq(1, 36, by = 1)
+
+# Interpolate burden means across full time range
+p_interp <- approx(x = burden_summary$Time, y = burden_summary$log_CFU_mean, xout = time_common)$y
+
+# Interpolate mortality estimates from m(t)
+m_interp <- approx(x = data_m_t$time_m, y = data_m_t$m_t, xout = time_common)$y
+
+# Normalize both
+normalize <- function(x) (x - min(x, na.rm = TRUE)) / (max(x, na.rm = TRUE) - min(x, na.rm = TRUE))
+
+p_norm <- normalize(p_interp)
+m_norm <- normalize(m_interp)
+
+# Create overlay dataframe
+map_overlay <- tibble(
+  time = time_common,
+  p = p_norm,
+  m = m_norm
+)
+
+# Plot with model-derived m(p) mapping
+p6 <- ggplot(map_overlay, aes(x = p, y = m)) +
+  geom_point(shape = 21, fill = "grey", size = 3, alpha) +
+  geom_line(data = df, aes(x = p_norm, y = m_p_norm), color = "#b80422", size = 1.2, inherit.aes = FALSE) +
+  labs(x = "Scaled p(t)", y = "Scaled m(t)") +
+  mytheme
+
+plot_grid(p4, p5, p6, labels = c("A", "B", "C"), nrow = 1)
+
+
+# Interpolate melanization and activity
+mel_interp <- approx(x = burden_summary$Time, y = burden_summary$melanization, xout = time_common)$y
+act_interp <- approx(x = burden_summary$Time, y = burden_summary$activity, xout = time_common)$y
+
+mel_norm <- normalize(mel_interp)
+act_norm <- normalize(act_interp)
+
+map_overlay <- tibble(
+  time = time_common,
+  p = p_norm,
+  m = m_norm,
+  activity = act_interp,
+  melanization = mel_interp,
+  raw_time = time_common
+)
+
+# Color points by normalized time
+ggplot(map_overlay, aes(x = p, y = m, fill = raw_time)) +
+  geom_point(shape = 21, size = 3, color = "black") +
+  geom_line(data = df, aes(x = p_norm, y = m_p_norm), 
+            inherit.aes = FALSE, color = "#b80422", size = 1.2) +
+  scale_fill_viridis_c(option = "B") +
+  labs(x = "Scaled p(t)", y = "Scaled m(t)", fill = "Time (h)") +
+  mytheme
+
+
+# Color points by normalized time
+mp1 <- ggplot(map_overlay, aes(x = p, y = m, fill = raw_time)) +
+  geom_point(shape = 21, size = 3, color = "black") +
+  geom_line(data = df, aes(x = p_norm, y = m_p_norm), 
+            inherit.aes = FALSE, color = "#b80422", size = 1.2) +
+  scale_fill_viridis_c(option = "B", direction = -1) +
+  labs(x = "Scaled p(t)", y = "Scaled m(t)", fill = "Time (h)") +
+  mytheme
+
+mp2 <- ggplot(map_overlay, aes(x = p, y = m, fill = activity)) +
+  geom_point(shape = 21, size = 3, color = "black") +
+  geom_line(data = df, aes(x = p_norm, y = m_p_norm), 
+            inherit.aes = FALSE, color = "#b80422", size = 1.2) +
+  scale_fill_viridis_c(option = "B") +
+  labs(x = "Scaled p(t)", y = "Scaled m(t)", fill = "Time (h)") +
+  mytheme
+
+mp3 <- ggplot(map_overlay, aes(x = p, y = m, fill = melanization)) +
+  geom_point(shape = 21, size = 3, color = "black") +
+  geom_line(data = df, aes(x = p_norm, y = m_p_norm), 
+            inherit.aes = FALSE, color = "#b80422", size = 1.2) +
+  scale_fill_viridis_c(option = "B", direction = -1) +
+  labs(x = "Scaled p(t)", y = "Scaled m(t)", fill = "Time (h)") +
+  mytheme
+
+
+plot_grid(mp1, mp2, mp3, labels = c("A", "B", "C"), nrow = 1)
