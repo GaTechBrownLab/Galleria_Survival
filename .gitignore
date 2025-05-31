@@ -3,6 +3,13 @@
 .Rhistory
 .RData
 .Ruserdata
+.DS_Store
+Palettes.R
+*.pdf
+*.png
+*.svg
+figures/
+Galleria_Survival.Rproj
 =======
 # History files
 .Rhistory
@@ -61,3 +68,4 @@ Palettes.R
 *.png
 *.svg
 figures/
+Galleria_Survival.Rproj
