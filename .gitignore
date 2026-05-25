@@ -64,8 +64,8 @@ rsconnect/
 
 .DS_Store
 Palettes.R
-*.pdf
-*.png
-*.svg
-figures/
+
+old/
+
 Galleria_Survival.Rproj
+
