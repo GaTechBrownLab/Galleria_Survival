@@ -14,6 +14,7 @@ library(mgcv)
 library(ggplot2)  
 library(cowplot)
 library(patchwork)
+library(ggdist)
 
 
 # SEM
@@ -46,13 +47,13 @@ library(purrr)
 # panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
 mytheme <- theme_bw() +
   theme(axis.ticks.length = unit(.25, "cm")) +
-  theme(legend.text = element_text(size = 14)) +
-  theme(axis.text = element_text(size = 14, color = "black"), axis.title = element_text(size = 16)) +
+  theme(legend.text = element_text(size = 16)) +
+  theme(axis.text = element_text(size = 16, color = "black"), axis.title = element_text(size = 18)) +
   theme(panel.border = element_rect(
     fill = NA, colour = "black",
     size = 1
   )) +
-  theme(strip.text.x = element_text(size = 14), strip.background = element_blank()) +
+  theme(strip.text.x = element_text(size = 16), strip.background = element_blank()) +
   theme(legend.title = element_blank()) +
   theme(panel.border = element_rect(
     fill = NA, colour = "black",
@@ -146,7 +147,7 @@ inset_plot <- ggplot(mort_fitted_df, aes(x = time, y = mortality)) +
   geom_line(color = "#b80422", linewidth = 1) +
   scale_x_continuous(breaks = c(0, 18, 36)) +
   scale_y_continuous(breaks = c(0, 35, 70)) +
-  labs(x = "Time (h)", y = (bquote('m(t) '(h^-1)))) +
+  labs(x = "Time (hrs)", y = (bquote('m(t) '(h^-1)))) +
   theme_bw() +
   theme(
     panel.border = element_rect(fill = NA, color = "black", linewidth = 0.5),
@@ -159,12 +160,12 @@ print(inset_plot)
 
 # Main survival plot
 p1A <- ggplot(plot_data, aes(x = time, y = survival)) +
-  geom_point(data = control, aes(fill = group), size = 2, shape = 21) +
-  geom_point(data = plot_data, aes(fill = group), size = 2, shape = 21) +
+  geom_point(data = control, aes(fill = group), size = 3, shape = 21) +
+  geom_point(data = plot_data, aes(fill = group), size = 3, shape = 21) +
   geom_line(data = gompertz_fit, aes(y = fitted_survival, linetype = group, color = group), linewidth = 1) +
   annotate("segment", x = 1, xend = 36, y = 1, yend = 1, 
            color = "grey50", linewidth = 0.8, linetype = "dashed") +
-  labs(x = "Time (h)", y = "Proportion of survival") +
+  labs(x = "Time (hrs)", y = "Proportion of survival") +
   scale_fill_manual(values = c("Control" = "grey70", "Infected" = "grey20")) +
   scale_linetype_manual(values = c("Gompertz fit" = "solid")) +
   scale_color_manual(values = c("Gompertz fit" = "black")) +
@@ -183,7 +184,7 @@ p1A <- ggplot(plot_data, aes(x = time, y = survival)) +
 pA_with_inset <- p1A +
   annotation_custom(
     ggplotGrob(inset_plot),
-    xmin = -0.05, xmax = 19, ymin = -0.05, ymax = 0.45
+    xmin = -0.05, xmax = 17, ymin = -0.05, ymax = 0.45
   )
 
 #===============================================================================
@@ -247,7 +248,7 @@ p1C <- ggplot(df_s1, aes(x = time, y = p)) +
         panel.grid.minor = element_blank())
 
 p1D <- ggplot(df_s1, aes(x = p, y = m_t)) +
-  geom_line(color = "#e76f51", linewidth = 1.5) +
+  geom_line(color = "#ee9b43", linewidth = 1.5) +
   labs(x = "Pathogen, p (CFU)", y = "Mortality m(p)") +
   scale_x_continuous(labels = scientific_10)+
   scale_y_continuous(breaks = c(0, 35, 70))+
@@ -268,7 +269,7 @@ figure1
 
 # Save
 ggsave("figures/figure1.pdf",  # >>> Manuscript Figure 1 (survival + Gompertz scenarios) 
-       plot = figure1, width = 9, height = 6, units = "in", dpi = 300)
+       plot = figure1, width = 10, height = 6, units = "in", dpi = 300)
 
 #-------------------------------------------------------------------------------
 # Estimated percentage of bacteria 
@@ -506,7 +507,7 @@ ci_K_alive <- quantile(boot_curve_a_full$t[, 1], probs = c(0.025, 0.975), na.rm 
 #===============================================================================
 
 # Define colors and linetypes
-line_colors <- c("Total population" = "#b80422", "Alive only" = "#19798b")
+line_colors <- c("Total population" = "#ee9b43", "Alive only" = "#19798b")
 line_types  <- c("Total population" = "solid", "Alive only" = "dashed")
 
 figure2 <- ggplot(burden_tidy_time, aes(x = Time, y = log_CFU)) +
@@ -525,11 +526,11 @@ figure2 <- ggplot(burden_tidy_time, aes(x = Time, y = log_CFU)) +
                                          color = "Alive only", 
                                          linetype = "Alive only"), 
             size = 1.2, inherit.aes = FALSE) +
-  xlab("Time (h)") +
+  xlab("Time (hrs)") +
   ylab(bquote(log[10](CFU))) +
   scale_fill_manual(
     name = "Status",
-    values = c("Alive" = "#19798b", "Dead" = "#ee9b43")
+    values = c("Alive" = "#19798b", "Dead" = "#b80422")
   ) +
   scale_color_manual(
     name = "Logistic fit",
@@ -541,7 +542,7 @@ figure2 <- ggplot(burden_tidy_time, aes(x = Time, y = log_CFU)) +
   ) +
   scale_x_continuous(breaks = c(4, 12, 20, 28, 36)) +
   mytheme +
-  theme(legend.position = c(0.2, 0.8)) +
+  theme(legend.position = c(0.25, 0.8)) +
   guides(
     fill = guide_legend(order = 1),
     color = guide_legend(order = 2),
@@ -648,9 +649,9 @@ burden_tidy_death %>%
 p_postmortem <- ggplot(burden_tidy_death %>% filter(status == "Dead"), 
                        aes(x = time_since_death, y = log_CFU)) +
   geom_point(size = 3, alpha = 0.6) +
-  geom_smooth(method = "lm", se = TRUE, color = "darkred") +
+  geom_smooth(method = "lm", se = TRUE, color = "#b80422") +
   labs(
-    x = "Time since death (h)",
+    x = "Time since death (hrs)",
     y = expression(log[10](CFU))
   ) +
   mytheme
@@ -659,7 +660,7 @@ print(p_postmortem)
 
 # Save
 ggsave("figures/figureS1.pdf",  # >>> Supplementary Figure S1 (post-mortem burden) 
-       plot = p_postmortem, width = 7, height = 6, units = "in", dpi = 300)
+       plot = p_postmortem, width = 5.3, height = 5, units = "in", dpi = 300)
 
 # Test for post-mortem growth
 lm_postmortem <- lm(log_CFU ~ time_since_death, 
@@ -681,8 +682,7 @@ p_comparison <- burden_tidy_death %>%
 print(p_comparison)
 
 #-------------------------------------------------------------------------------
-# m(p) mapping - Excluded from the main text, but included in the 
-# supplement to show how m(p) behaves as p approaches K
+# m(p) mapping - Added as Figure 3A later on instead of Supplement
 #-------------------------------------------------------------------------------
 
 params_gompertz <- coef(fit)
@@ -719,7 +719,7 @@ df_m <- data.frame(
 x_lab <- unname(log10(p0) + 0.08 * (log10(0.999 * K) - log10(p0)))
 
 figure_mp <- ggplot(df_m, aes(x = p_log, y = m_p)) +
-  geom_line(color = "#e76f51", linewidth = 1.5) +
+  geom_line(color = "#b80422", linewidth = 1.5) +
   labs(x = bquote(log[10](CFU)), 
        y = bquote(m(p)~(h^-1))) +
   scale_x_continuous(breaks = c(2, 4, 6)) +
@@ -755,20 +755,18 @@ df_pole <- rbind(
 df_pole$m <- m_signed(df_pole$pk * K)
 ywin <- max(abs(m_signed(0.8 * K)), abs(m_signed(2 * K))) * 1.1
 
-figure_s3 <- ggplot(df_pole, aes(pk, m, group = side)) +
+# Figure 3A later
+figure_s2 <- ggplot(df_pole, aes(pk, m, group = side)) +
   annotate("rect", xmin = 1, xmax = 2.5, ymin = -ywin, ymax = ywin, fill = "grey50", alpha = 0.08) +
   geom_hline(yintercept = 0, colour = "grey70", linewidth = 0.3) +
   geom_vline(xintercept = 1, linetype = "dashed", colour = "grey55") +
-  geom_line(colour = "#e76f51", linewidth = 1.3) +
-  annotate("text", x = 1, y = ywin, label = "p == K", parse = TRUE, vjust = -0.4, size = 4) +
-  annotate("text", x = 1.75, y = 0.82 * ywin, label = "p > K\n(unreachable)", size = 3.4, lineheight = 0.9) +
+  geom_line(colour = "#ee9b43", linewidth = 1.3) +
+  #annotate("text", x = 1.01, y = ywin, label = "p == K", parse = TRUE, vjust = -0.4, size = 6) +
+  #annotate("text", x = 1.75, y = 0.6 * ywin, label = "p > K\n(unreachable)", size = 6, lineheight = 0.9) +
   scale_x_continuous(breaks = c(0, 1, 2), labels = c("0", "K", "2K")) +
   labs(x = "Pathogen burden (p)", y = bquote(m(p)~(h^-1))) +
   coord_cartesian(ylim = c(-ywin*4, ywin*4), clip = "on") +
   mytheme + theme(panel.grid = element_blank(), plot.margin = margin(14, 10, 6, 6))
-
-ggsave("figures/figureS3.pdf",
-       plot = figure_s3, width = 5, height = 4, units = "in", dpi = 300)
 
 #===============================================================================
 # Health variables 
@@ -799,7 +797,7 @@ dynamic_period <- burden_tidy %>% filter (Time < 37)
 # Each row = one larva at its sampling time.
 
 dat_cs <- burden_tidy %>%
-  filter(Time < 37) %>%
+filter(Time < 37) %>%
   filter(!is.na(activity), !is.na(melanization), !is.na(status)) %>%
   transmute(
     time   = Time,
@@ -873,7 +871,7 @@ boot_MT <- boot_T50_cs(dat_cs$time, dat_cs$unmel)
 boot_LT <- boot_T50_cs(dat_cs$time, dat_cs$alive)
 
 T50_summary <- tibble(
-  metric  = c("Activity (AT50)", "Melanization (MT50)", "Survival (LT50)"),
+  metric  = c("AT50", "MT50", "LT50"),
   T50     = c(T50_act, T50_mel, T50_surv),
   CI_low  = c(quantile(boot_AT, 0.025), quantile(boot_MT, 0.025), quantile(boot_LT, 0.025)),
   CI_high = c(quantile(boot_AT, 0.975), quantile(boot_MT, 0.975), quantile(boot_LT, 0.975))
@@ -897,9 +895,9 @@ make_curve <- function(fit, label) {
   data.frame(time = t_grid, p = gompertz_S(t_grid, a, b), metric = label)
 }
 curves <- bind_rows(
-  make_curve(fit_AT, "Activity (AT50)"),
-  make_curve(fit_MT, "Melanization (MT50)"),
-  make_curve(fit_LT, "Survival (LT50)")
+  make_curve(fit_AT, "AT50"),
+  make_curve(fit_MT, "MT50"),
+  make_curve(fit_LT, "LT50")
 )
 
 # Observed proportions per timepoint for diagnostic overlay
@@ -909,14 +907,14 @@ obs_props <- dat_cs %>%
   group_by(time, metric_short) %>%
   summarise(p = mean(y), n = n(), .groups = "drop") %>%
   mutate(metric = recode(metric_short,
-                         active = "Activity (AT50)",
-                         unmel  = "Melanization (MT50)",
-                         alive  = "Survival (LT50)"))
+                         active = "AT50",
+                         unmel  = "MT50",
+                         alive  = "LT50"))
 
 palette_T50 <- c(
-  "Activity (AT50)"     = "#19798b",
-  "Melanization (MT50)" = "#ee9b43",
-  "Survival (LT50)"     = "#b80422"
+  "AT50"     = "#19798b",
+  "MT50" = "#ee9b43",
+  "LT50"     = "#b80422"
 )
 
 
@@ -971,12 +969,13 @@ p4A <- ggplot(dynamic_period, aes(x = log_CFU, y = activity)) +
   geom_line(data = cfu_seq_act, aes(x = log_CFU, y = smoothed_activity),
             color = "black", linewidth = 0.9, inherit.aes = FALSE) +
   scale_color_viridis_c(option = "magma", direction = -1, end = 0.92,
-                        name = "Time (h)") +
+                        name = "Time") +
   labs(x = expression(log[10](CFU)), y = "Activity") +
   mytheme +
   theme(legend.position = c(0.85, 0.75),
         legend.background = element_rect(fill = alpha("white", 0.8), color = NA),
         legend.key.height = unit(0.5, "cm"), 
+        legend.title = element_text(size = 16)
   )
 
 # Fig 4B: melanization shown in SEVERITY orientation (higher = more melanized = worse).
@@ -985,7 +984,7 @@ p4B <- ggplot(dynamic_period, aes(x = log_CFU, y = melanization)) +
   geom_line(data = cfu_seq_mel, aes(x = log_CFU, y = smoothed_melanization),
             color = "black", linewidth = 0.9, inherit.aes = FALSE) +
   scale_color_viridis_c(option = "magma", direction = -1, end = 0.92,
-                        name = "Time (h)") +
+                        name = "Time") +
   labs(x = expression(log[10](CFU)), y = "Melanization") +
   mytheme +
   theme(legend.position = "none")  # share legend with p4B visually
@@ -993,17 +992,17 @@ p4B <- ggplot(dynamic_period, aes(x = log_CFU, y = melanization)) +
 # ----------------------------------------------------------------------------
 # Individual-level binary points (replaces obs_props block)
 # ----------------------------------------------------------------------------
-metric_offsets <- c("Activity (AT50)"     = -0.5,
-                    "Melanization (MT50)" =  0.0,
-                    "Survival (LT50)"     =  0.5)
+metric_offsets <- c("AT50"     = -0.5,
+                    "MT50" =  0.0,
+                    "LT50"     =  0.5)
 
 indiv_pts <- dat_cs %>%
   pivot_longer(c(active, unmel, alive),
                names_to = "metric_short", values_to = "y") %>%
   mutate(metric = recode(metric_short,
-                         active = "Activity (AT50)",
-                         unmel  = "Melanization (MT50)",
-                         alive  = "Survival (LT50)"),
+                         active = "AT50",
+                         unmel  = "MT50",
+                         alive  = "LT50"),
          time_plot = time + metric_offsets[metric])
 
 # ----------------------------------------------------------------------------
@@ -1017,9 +1016,9 @@ obs_props <- dat_cs %>%
   group_by(time, metric_short) %>%
   summarise(p = mean(y), n = n(), .groups = "drop") %>%
   mutate(metric = recode(metric_short,
-                         active = "Activity (AT50)",
-                         unmel  = "Melanization (MT50)",
-                         alive  = "Survival (LT50)"))
+                         active = "AT50",
+                         unmel  = "MT50",
+                         alive  = "LT50"))
 obs_props %>% arrange(time, metric) %>% print(n = Inf)
 # Panel A
 p4C <- ggplot(curves, aes(x = time, y = p, color = metric)) +
@@ -1035,11 +1034,11 @@ p4C <- ggplot(curves, aes(x = time, y = p, color = metric)) +
   scale_color_manual(values = palette_T50, name = NULL) +
   scale_y_continuous(limits = c(0, 1.02), breaks = seq(0, 1, 0.25)) +
   scale_x_continuous(limits = c(0, 36), breaks = seq(0, 36, 6)) +
-  labs(x = "Time (h)", y = "Proportion") +
+  labs(x = "Time (hrs)", y = "Proportion") +
   mytheme +
-  theme(legend.position = c(0.28, 0.2),
+  theme(legend.position = c(0.8, 0.8),
         legend.background = element_rect(fill = alpha("white", 0.8), color = NA),
-        legend.text = element_text(size = 11))
+        legend.text = element_text(size = 16))
 
 # ----------------------------------------------------------------------------
 # Compose Figure 4
@@ -1047,11 +1046,10 @@ p4C <- ggplot(curves, aes(x = time, y = p, color = metric)) +
 figure4 <- (p4A | p4B | p4C) +
   plot_layout(heights = c(1.1, 1)) +
   plot_annotation(tag_levels = "A") &
-  theme(plot.tag = element_text(face = "bold", size = 14))+
-  theme(legend.title = element_text(size = 12))
+  theme(plot.tag = element_text(face = "bold", size = 14))
 
 ggsave("figures/figure4.pdf",  # >>> Manuscript Figure 4 (activity/melanization + T50)
-       plot = figure4, width = 14, height = 4.5, units = "in", dpi = 300)
+       plot = figure4, width = 13, height = 4.5, units = "in", dpi = 300)
 
 # ----------------------------------------------------------------------------
 # Hysteresis quantification (for the text)
@@ -1067,60 +1065,6 @@ cat("\n--- Hysteresis (effect of Time | log_CFU) ---\n")
 cat("Activity:    "); print(round(summary(m_act_hyst)$coefficients["Time", ], 4))
 cat("Melanization:"); print(round(summary(m_mel_hyst)$coefficients["Time", ], 4))
 
-#==============================================================================
-# Overview figure: survival | pathogen growth | composite-health decline
-# Reuses p1A (survival, Fig 1) and figure2 (logistic burden growth, Fig 2),
-# and adds a panel fitting a logistic DECLINE to composite health over time
-# (the mirror of logistic growth). Falls back to a monotone-decreasing smooth
-# if the nls fit does not converge.
-#==============================================================================
-hdat <- burden_tidy_time %>% filter(!is.na(health_combined), !is.na(Time))
-t_grid_h <- data.frame(Time = seq(min(hdat$Time, na.rm = TRUE),
-                                  max(hdat$Time, na.rm = TRUE), length.out = 200))
-
-# Logistic decline: health falls from an upper plateau U to a lower plateau L,
-# with steepness k and midpoint t50 (k > 0 => decreasing in Time).
-fit_health_decline <- tryCatch(
-  nlsLM(health_combined ~ L + (U - L) / (1 + exp(k * (Time - t50))),
-        data  = hdat,
-        start = list(U   = max(hdat$health_combined, na.rm = TRUE),
-                     L   = min(hdat$health_combined, na.rm = TRUE),
-                     k   = 0.2,
-                     t50 = median(hdat$Time, na.rm = TRUE)),
-        lower = c(U = 0, L = 0, k = 0, t50 = 0),
-        control = nls.lm.control(maxiter = 200)),
-  error = function(e) NULL)
-
-if (!is.null(fit_health_decline)) {
-  t_grid_h$fit <- predict(fit_health_decline, newdata = t_grid_h)
-  cat("\n=== Composite health decline (logistic fit) ===\n")
-  print(round(coef(fit_health_decline), 3))
-} else {
-  sc_health <- scam(health_combined ~ s(Time, k = 8, bs = "mpd"), data = hdat)
-  t_grid_h$fit <- predict(sc_health, newdata = t_grid_h)
-  cat("\nLogistic health-decline fit did not converge; using monotone-decreasing smooth.\n")
-}
-
-p_health <- ggplot(hdat, aes(x = Time, y = health_combined)) +
-  geom_jitter(aes(fill = status), size = 3, shape = 21, alpha = 0.6,
-              color = "black", width = 0.4, height = 0.1) +
-  geom_line(data = t_grid_h, aes(x = Time, y = fit),
-            color = "black", linewidth = 1.2) +
-  scale_fill_manual(name = "Status",
-                    values = c("Alive" = "#19798b", "Dead" = "#ee9b43")) +
-  labs(x = "Time (h)", y = "Health score") +
-  scale_x_continuous(breaks = c(4, 12, 20, 28, 36)) +
-  mytheme +
-  theme(legend.position = c(0.8, 0.85))
-
-
-p1A_overview <- p1A + theme(legend.position  = c(0.25, 0.2)) 
-figure2_overview <- figure2 + theme(legend.position = c(0.25, 0.8))
-figure_overview <- (p1A_overview | figure2_overview | p_health) +
-  plot_annotation(tag_levels = "A")
-
-ggsave("figures/figure_overview.pdf",
-       plot = figure_overview, width = 15, height = 5, units = "in", dpi = 300)
 
 #===============================================================================
 ### ANTIBIOTIC TREATMENT ###
@@ -1280,12 +1224,13 @@ pal_improved <- c(
   "PBS-PBS" = "#d9d9d9",      # lightest grey - vehicle control
   "PBS-CIP" = "#969696",      # medium grey - injection control  
   "PAO1-PBS" = "#252525",     # dark grey/black - no treatment
-  "PAO1-00hCIP" = "#1b7837",  # dark green - immediate rescue
-  "PAO1-03hCIP" = "#5aae61",  # medium green - early rescue
+  "PAO1-00hCIP" = "#8adbea",  # dark green - immediate rescue
+  "PAO1-03hCIP" = "#19798b",  # medium green - early rescue
   "PAO1-06hCIP" = "#fdd49e",  # light orange - partial rescue
-  "PAO1-09hCIP" = "#fc8d59",  # medium orange - limited rescue
-  "PAO1-12hCIP" = "#d7301f"   # red - too late
+  "PAO1-09hCIP" = "#ee9b43",  # medium orange - limited rescue
+  "PAO1-12hCIP" = "#b80422"   # red - too late
 )
+
 
 # Nice labels for all panels
 treatment_labels <- c(
@@ -1356,12 +1301,12 @@ health_summary_ci %>%
   print()
 
 p7B <- ggplot(health_summary_ci, aes(y = Treatment, x = mean_health, fill = Treatment)) +
-  geom_point(size = 4.5, shape = 21, color = "black", stroke = 0.5) +
+  geom_point(size = 5, shape = 21, color = "black", stroke = 0.5) +
   geom_errorbarh(aes(xmin = ci_low, xmax = ci_high), 
                  height = 0.25, linewidth = 0.5) +  
   scale_fill_manual(values = pal_improved) +
-  scale_x_continuous(limits = c(0, 9.5), 
-                     breaks = seq(0, 9, by = 3),
+  scale_x_continuous(limits = c(0, 8), 
+                     breaks = seq(0, 8, by = 2),
                      expand = c(0.02, 0)) +
   scale_y_discrete(labels = treatment_labels) +
   labs(x = "Health score", y = NULL) +
@@ -1410,7 +1355,7 @@ controls_burden <- expdata_filled %>%
 burden_summary_ci <- bind_rows(burden_summary_ci, controls_burden)
 
 p7C <- ggplot(burden_summary_ci, aes(y = Treatment, x = mean_cfu, fill = Treatment)) +
-  geom_point(size = 4.5, shape = 21, color = "black", stroke = 0.5) +
+  geom_point(size = 5, shape = 21, color = "black", stroke = 0.5) +
   geom_errorbarh(aes(xmin = ci_low, xmax = ci_high), 
                  height = 0.25, linewidth = 0.5) +  # Increased from 0.5
   scale_fill_manual(values = pal_improved) +
@@ -1426,25 +1371,6 @@ p7C <- ggplot(burden_summary_ci, aes(y = Treatment, x = mean_cfu, fill = Treatme
     panel.grid.major.y = element_blank(),
     axis.text.y = element_blank()
   )
-
-#-------------------------------------------------------------------------------
-# COMBINE
-#-------------------------------------------------------------------------------
-figure7 <- (p7A | p7B | p7C) +
-  plot_layout(widths = c(1, 1, 1)) +
-  plot_annotation(
-    tag_levels = 'A'
-  ) &
-  theme(
-    plot.tag = element_text(face = "bold", size = 14),
-    plot.tag.position = c(0.02, 1.015)
-  )
-
-print(figure7)
-
-ggsave("figures/figure7.pdf",  # >>> Manuscript Figure 7 (antibiotic intervention)
-       plot = figure7, width = 12, height = 5, units = "in", dpi = 300)
-
 
 # =============================================================================
 # Treatment-timing dose-response (continuous) — capstone for the treatment story
@@ -1517,30 +1443,100 @@ if (length(na.omit(cfu_untreated)) > 1 && length(na.omit(cfu_late)) > 1) {
 }
 cat("\n")
 
+# --- Control reference values (one row per control) --------------------------
+# Reuses your grepl() logic, so it is robust to the exact treatment strings.
+#   "No infection"        = uninfected larvae (vehicle + injection; no PAO1)
+#   "Infected, untreated" = PAO1 with no ciprofloxacin (the do-nothing baseline)
+ctrl_ref <- burden_tidy_ab %>%
+  mutate(alive01 = as.integer(Survival == 2),
+         control = dplyr::case_when(
+           !grepl("PAO1", Treatment)                            ~ "No infection",
+           grepl("PAO1", Treatment) & !grepl("CIP", Treatment)  ~ "Infected, untreated",
+           TRUE ~ NA_character_
+         )) %>%
+  filter(!is.na(control)) %>%
+  group_by(control) %>%
+  summarise(surv   = mean(alive01,      na.rm = TRUE),
+            health = mean(Total_health, na.rm = TRUE),
+            logcfu = mean(log_CFU,      na.rm = TRUE),
+            n      = dplyr::n(),
+            .groups = "drop") %>%
+  mutate(control = factor(control, levels = c("No infection", "Infected, untreated")))
+
+print(ctrl_ref)
+
+ctrl_cols <- c("No infection" = "#4d9221", "Infected, untreated" = "grey25")
+ctrl_lty  <- c("No infection" = "dashed",  "Infected, untreated" = "dashed")
+
+ctrl_layer <- function(yvar) {
+  list(
+    geom_hline(data = ctrl_ref,
+               aes(yintercept = .data[[yvar]], color = control, linetype = control),
+               linewidth = 0.7),
+    scale_color_manual(name = NULL, values = ctrl_cols),
+    scale_linetype_manual(name = NULL, values = ctrl_lty)
+  )
+}
+
+# --- Panel A counts: how many larvae alive vs dead in each treatment cluster --
+# Bins the exact per-larva times into the nominal 0/3/6/9/12 h groups. If you
+# have an actual group column (e.g. the planned treatment time), use that in
+# group_by() instead of the rounded `cluster`.
+cluster_n <- dose %>%
+  mutate(cluster = round(min_inj_to_treat / 180) * 180) %>%
+  group_by(cluster) %>%
+  summarise(x       = mean(min_inj_to_treat, na.rm = TRUE),  # label sits at cluster centre
+            n_alive = sum(alive01 == 1, na.rm = TRUE),
+            n_dead  = sum(alive01 == 0, na.rm = TRUE),
+            .groups = "drop")
+
+# --- Panels ------------------------------------------------------------------
 pD_surv <- ggplot(dose, aes(min_inj_to_treat, alive01)) +
-  geom_jitter(height = 0.04, width = 6, alpha = 0.5, shape = 21, fill = "grey40") +
-  geom_line(data = t_grid_d, aes(y = surv), color = "#b80422", linewidth = 1.2) +
-  scale_y_continuous(breaks = c(0, 0.5, 1)) +
+  geom_jitter(height = 0.04, width = 6, alpha = 0.5, shape = 21, fill = "grey40", size = 2) +
+  ctrl_layer("surv") +
+  geom_line(data = t_grid_d, aes(y = surv), color = "#b80422", linewidth = 1.5) +
+  # counts: survivors just above the y = 1 pile, deaths just below the y = 0 pile
+  geom_text(data = cluster_n, aes(x = x, y = 1.05, label = n_alive),
+            inherit.aes = FALSE, vjust = -0.8, size = 4, fontface = "bold", color = "grey15") +
+  geom_text(data = cluster_n, aes(x = x, y = -.05 , label = n_dead),
+            inherit.aes = FALSE, vjust = 1.8, size = 4, fontface = "bold", color = "grey15") +
+  scale_y_continuous(breaks = c(0, 0.5, 1), expand = expansion(mult = c(0.13, 0.13))) +
   labs(x = NULL, y = "P(survival at 24 h)") +
-  mytheme
+  mytheme+ 
+  theme(legend.position = c(0.65, 0.72))
 
 pD_health <- ggplot(dose, aes(min_inj_to_treat, Total_health)) +
-  geom_jitter(alpha = 0.5, width = 6, shape = 21, fill = "grey40") +
-  geom_line(data = t_grid_d, aes(y = health), color = "#19798b", linewidth = 1.2) +
-  labs(x = "Minutes from injection to treatment", y = "Composite health (24 h)") +
-  mytheme
+  geom_jitter(alpha = 0.5, width = 6, shape = 21, fill = "grey40", size = 2) +
+  ctrl_layer("health") +
+  geom_line(data = t_grid_d, aes(y = health), color = "#19798b", linewidth = 1.5) +
+  labs(x = "Minutes from injection to treatment", y = "Health score (24 h)") +
+  mytheme+
+  theme(legend.position = "none")
 
 pD_cfu <- ggplot(dose, aes(min_inj_to_treat, log_CFU)) +
-  geom_jitter(alpha = 0.5, width = 6, shape = 21, fill = "grey40") +
-  geom_line(data = t_grid_d, aes(y = logcfu), color = "#ee9b43", linewidth = 1.2) +
+  geom_jitter(alpha = 0.5, width = 6, shape = 21, fill = "grey40", size = 2) +
+  ctrl_layer("logcfu") +
+  geom_line(data = t_grid_d, aes(y = logcfu), color = "#ee9b43", linewidth = 1.5) +
   labs(x = NULL, y = bquote(log[10]~CFU~"(24 h)")) +
-  mytheme
+  mytheme+
+  theme(legend.position = "none")
 
-figure8 <- (pD_surv | pD_health | pD_cfu) +
-  plot_annotation(tag_levels = "A")
+# --- Assemble (collect the shared control legend at the bottom) --------------
+#figure8 <- (pD_surv | pD_health | pD_cfu) +
+#  plot_annotation(tag_levels = "A") +
+#  plot_layout(guides = "collect") &
+#  theme(plot.tag = element_text(face = "bold", size = 14),
+#        legend.position = "bottom")
 
-ggsave("figures/figure8.pdf",  # >>> Manuscript Figure 8 (continuous treatment-timing dose-response)
-       plot = figure8, width = 12, height = 4, units = "in", dpi = 300)
+figure7 <- (p7A | p7B | p7C) / (pD_surv | pD_health | pD_cfu) +
+  plot_layout(widths = c(1, 1.5)) +   # bottom row 1.5× the top — tune to taste
+  plot_annotation(tag_levels = "A") &
+  theme(plot.tag = element_text(face = "bold", size = 14))
+
+
+ggsave("figures/figure7.pdf",  # >>> Manuscript Figure 8
+       plot = figure7, width = 12.4, height = 7.8, units = "in", dpi = 300)
+
 
 
 # Survival stats
@@ -1686,6 +1682,18 @@ burden_timing <- burden_timing %>%
 
 lm_burden_timing <- lm(log_CFU ~ treatment_hours, data = burden_timing)
 summary(lm_burden_timing)
+
+
+# Σp from injection to treatment, using your logistic fit (K, r, p0)
+dose <- dose %>%
+  mutate(t_hours = min_inj_to_treat / 60,
+         Sigma_p_pre = (K / r) * log1p((p0 / (K - p0)) * expm1(r * t_hours)))
+
+m_surv_sigma   <- glm(alive01 ~ Sigma_p_pre, data = dose, family = binomial)
+m_health_sigma <- lm(Total_health ~ Sigma_p_pre, data = dose)
+AIC(m_surv_dose, m_surv_sigma)            # time vs Σp as predictor
+AIC(m_health_dose, m_health_sigma)
+
 
 # =============================================================================
 # Causal Analysis Figures for Galleria Paper
@@ -1993,7 +2001,7 @@ dag_B <- draw_dag_panel(
 dag_C <- draw_dag_panel(
   edges = c("t_p", "p_s", "t_s"),
   title = "",
-  subtitle = ""
+  subtitle = "Saturated"
 )
 
 # This is the final figure 3
@@ -2071,12 +2079,12 @@ bin_palette <- c("Low" = "#19798b", "Medium" = "#ee9b43", "High" = "#b80422")
 p3D <- ggplot() +
   geom_jitter(data = dat_fig3,
               aes(x = Time, y = alive, color = cfu_bin),
-              width = 0.3, height = 0.035, alpha = 0.5, size = 1.7) +
+              width = 0.3, height = 0.035, alpha = 0.5, size = 2) +
   #geom_ribbon(data = pred_D,
   #            aes(x = Time, ymin = lwr, ymax = upr, fill = bin),
   #            alpha = 0.12) +
   geom_line(data = null_D, aes(x = Time, y = fit, color = cfu_bin),
-            linetype = "dashed", linewidth = 0.7, alpha = 0.6)+
+            linetype = "dashed", linewidth = 1, alpha = 0.6)+
   geom_line(data = pred_D,
             aes(x = Time, y = fit, color = bin),
             linewidth = 1.1) +
@@ -2086,10 +2094,9 @@ p3D <- ggplot() +
   scale_y_continuous(breaks = c(0, 1), labels = c("Dead", "Alive"),
                      limits = c(-0.12, 1.12)) +
   scale_x_continuous(limits = c(0, 36), breaks = seq(0, 36, 6)) +
-  labs(x = "Time (h)", y = "Survival") +
+  labs(x = "Time (hrs, t)", y = "Survival (s)") +
   mytheme +
-  theme(legend.position = c(0.25, 0.25),
-        axis.text.y = element_blank(), axis.ticks.y = element_blank())
+  theme(legend.position = c(0.2, 0.4))
 
 # ----------------------------------------------------------------------------
 # Panel E: P(alive) vs log_CFU at three illustrative time levels
@@ -2112,12 +2119,12 @@ time_palette <- c("0–12h" = "#19798b", "12–24h" = "#ee9b43", "24–48h" = "#
 p3E <- ggplot() +
   geom_jitter(data = dat_fig3,
               aes(x = log_CFU, y = alive, color = time_bin),
-              width = 0.08, height = 0.035, alpha = 0.5, size = 1.7) +
+              width = 0.08, height = 0.035, alpha = 0.5, size = 2) +
   #geom_ribbon(data = pred_E,
   #            aes(x = log_CFU, ymin = lwr, ymax = upr, fill = bin),
   #            alpha = 0.12) +
   geom_line(data = null_E, aes(x = log_CFU, y = fit, color = bin),
-            linetype = "dashed", linewidth = 0.7, alpha = 0.6)+
+            linetype = "dashed", linewidth = 1, alpha = 0.6)+
   geom_line(data = pred_E,
             aes(x = log_CFU, y = fit, color = bin),
             linewidth = 1.1) +
@@ -2125,29 +2132,32 @@ p3E <- ggplot() +
   scale_fill_manual(values = time_palette, guide = "none") +
   scale_y_continuous(breaks = c(0, 1), labels = c("Dead", "Alive"),
                      limits = c(-0.12, 1.12)) +
-  labs(x = expression(log[10](CFU)), y = "Survival") +
+  labs(x = expression(log[10](CFU, p)), y = NULL) +
   mytheme+
-  theme(legend.position = c(0.25, 0.35),
-        axis.text.y = element_blank(), axis.ticks.y = element_blank())
+  theme(legend.position = c(0.2, 0.4),
+        axis.text.y = element_blank())
 
 # Shared display limits for the 3-node DAG panels. These match the coord_fixed()
 # limits set inside draw_dag_panel() so the conditional-independence subtitle
 # (placed at y = -0.5) is not clipped when the panels are composed by patchwork.
-dag_xlim <- c(-0.5, 2.5)
-dag_ylim <- c(-0.7, 1.4)
+
+dag_xlim <- c(-0.1, 2.3)
+dag_ylim <- c(-0.1, 1.3)
 
 dag_A <- dag_A + coord_cartesian(xlim = dag_xlim, ylim = dag_ylim, clip = "off")
 dag_B <- dag_B + coord_cartesian(xlim = dag_xlim, ylim = dag_ylim, clip = "off")
 dag_C <- dag_C + coord_cartesian(xlim = dag_xlim, ylim = dag_ylim, clip = "off")
 
 
-figure3 <- (dag_A | dag_B | dag_C) / (p3D | p3E) +
-  plot_layout(heights = c(1, 1)) +
+figure3 <- (figure_s2 | dag_A | dag_B | dag_C) / (p3D | p3E) +
+  plot_layout(heights = c(1, 2)) +
   plot_annotation(tag_levels = "A") &
   theme(plot.tag = element_text(face = "bold", size = 14))
 
-ggsave("figures/figure3.pdf",  # >>> Manuscript Figure 3 (3-node DAGs + diagnostics)
-       plot = figure3, width = 12, height = 7, units = "in", dpi = 300)
+figure3
+
+ggsave("figures/figure3.pdf",  # >>> Manuscript Figure 3 (m(p) + 3-node DAGs + diagnostics)
+       plot = figure3, width = 9.5, height = 7.7, units = "in", dpi = 300)
 
 
 # ============================================================================
@@ -2255,7 +2265,8 @@ p5D <- ggplot() +
   geom_line(data = pred_D, aes(x = Time, y = fit, color = bin), linewidth = 1.1) +
   scale_color_manual(values = pal_cfu, name = expression(log[10](CFU))) +
   scale_x_continuous(limits = c(0, 36), breaks = seq(0, 36, 6)) +
-  labs(x = "Time (h)", y = "Health (h)") + mytheme
+  labs(x = "Time (hrs, t)", y = "Health score (h)") + mytheme +
+  theme(legend.position = "none")
 
 # ----------------------------------------------------------------------------
 # 4. Panel E — rejects B: S vs h at 3 CFU levels
@@ -2284,7 +2295,8 @@ p5E <- ggplot() +
   geom_line(data = pred_E, aes(x = h, y = fit, color = bin), linewidth = 1.1) +
   scale_color_manual(values = pal_cfu, name = expression(log[10](CFU))) +
   scale_y_continuous(breaks = c(0,1), labels = c("Dead","Alive"), limits = c(-0.12, 1.12)) +
-  labs(x = "Health (h)", y = "Survival") + mytheme
+  labs(x = "Health score (h)", y = "Survival (s)") + mytheme +
+  theme(legend.position = c(.7, .35))
 
 # ----------------------------------------------------------------------------
 # 5. Panel F — supports C: S vs Time at 3 h levels
@@ -2314,8 +2326,8 @@ p5F <- ggplot() +
   scale_color_manual(values = pal_h, name = "Health (h)") +
   scale_y_continuous(breaks = c(0,1), labels = c("Dead","Alive"), limits = c(-0.12, 1.12)) +
   scale_x_continuous(limits = c(0, 36), breaks = seq(0, 36, 6)) +
-  labs(x = "Time (h)", y = "Survival") + mytheme +
-  theme(legend.position = c(0.25, 0.35))
+  labs(x = "Time (hrs, t)", y = "Survival (s)") + mytheme +
+  theme(legend.position = c(.7, .35), axis.title.y = element_blank(), axis.text.y = element_blank())
 
 # ----------------------------------------------------------------------------
 # 6. Print test stats for caption
@@ -2341,7 +2353,7 @@ figure5 <- dag5_A + dag5_B + dag5_C + p5D + p5E + p5F +
 figure5
 
 ggsave("figures/figure5.pdf",  # >>> Manuscript Figure 5 (4-node health DAGs + diagnostics)
-       plot = figure5, width = 14.5, height = 6.5, dpi = 300)
+       plot = figure5, width = 11, height = 6.5, dpi = 300)
 
 # -----------------------------------------------------------------------------
 # Sensitivity analysis: health composite = melanization only (h_mel = 4 - melan.)
@@ -2511,7 +2523,7 @@ dag_sem <- draw_dag_panel_4node(
   theme(
     plot.background  = element_rect(fill = "white", color = "grey70", linewidth = 0.4),
     panel.background = element_rect(fill = "white", color = NA),
-    plot.title = element_text(hjust = 0.5, size = 12, face = "italic")
+    plot.title = element_text(hjust = 0.5, size = 14, face = "italic")
   )
 
 # Panel B: Effect sizes (already exists as effect_plot)
@@ -2522,15 +2534,15 @@ effects_df$lower    <- as.numeric(effects_df$lower)
 effects_df$upper    <- as.numeric(effects_df$upper)
 
 p5B <- ggplot(effects_df, aes(y = path, x = estimate)) +
-  geom_col(fill = "grey70", width = 0.6) +
+  geom_col(fill = "grey70", color = "black", width = 0.6) +
   geom_vline(xintercept = 0, linetype = "dashed", linewidth = 0.8) +
   geom_errorbar(aes(xmin = lower, xmax = upper), width = 0.2, linewidth = 0.8) +
-  labs(y = "", x = "Effect Size") +
+  labs(y = "", x = "Standardized effect sizes") +
   mytheme +
   theme(
-    axis.text.y = element_text(hjust = 1, size = 14),
-    axis.text.x = element_text(size = 14),
-    axis.title.x = element_text(size = 14),
+    axis.text.y = element_text(hjust = 1, size = 16),
+    axis.text.x = element_text(size = 16),
+    axis.title.x = element_text(size = 16),
     panel.grid.major.x = element_line(color = "grey90", linewidth = 0.3)
   )+
   scale_y_discrete(labels = function(x) parse(text = x))
@@ -2539,15 +2551,95 @@ p5B <- ggplot(effects_df, aes(y = path, x = estimate)) +
 #dag_sem <- dag_sem + coord_cartesian(ylim = c(-0.4, 1.6), clip = "off")
 figure6 <- p5B +
   inset_element(dag_sem,
-                left = 0.62, bottom = 0.02,    # bottom-right corner
+                left = 0.7, bottom = 0.02,    # bottom-right corner
                 right = 1.00, top = 0.35,
                 align_to = "panel",
                 on_top = TRUE)
 
 ggsave("figures/figure6.pdf",  # >>> Manuscript Figure 6 (SEM path effects)
-       plot = figure6, width = 7.7, height = 7, units = "in", dpi = 300)
+       plot = figure6, width = 9, height = 7, units = "in", dpi = 300)
 
+# =============================================================================
+# Figure 6: SEM path effects from POSTERIOR DRAWS (single source of truth)
+# Model:  scaled_cfu ~ t1*time_linear + t2*time_squared
+#         scaled_health_combined ~ a*scaled_cfu + h1*time_linear
+#         survival ~ b*scaled_health_combined
+#         indirect_p := a*b ; indirect_t := h1*b
+#
+# Inputs are pre-scaled, so raw coefficients ARE the standardized effects.
+# Everything (point estimate, CrI, density) comes from the draws -> no
+# dependence on parameterEstimates() column names.
+# =============================================================================
 
+path_labels <- c(
+  t1         = "italic(t) %->% italic(p)~(t[1])",
+  t2         = "italic(t)^2 %->% italic(p)~(t[2])",
+  a          = "italic(p) %->% italic(h)~(a)",
+  h1         = "italic(t) %->% italic(h)~(h[1])",
+  b          = "italic(h) %->% italic(s)~(b)",
+  indirect_p = "Indirect:~italic(p) %->% italic(h) %->% italic(s)",
+  indirect_t = "Indirect:~italic(t) %->% italic(h) %->% italic(s)"
+)
+path_order <- rev(unname(path_labels))
+
+# ---- Posterior draws of the free parameters --------------------------------
+# Combine chains by iterating the list (avoids coda's mcmc.list reconstruction,
+# which errors when blavaan returns chains not classed as `mcmc`).
+mc <- blavInspect(fit_sem, "mcmc")
+if (coda::is.mcmc(mc)) mc <- list(mc)            # single-chain safety
+draws <- do.call(rbind, lapply(mc, as.matrix))
+
+# blavaan named the columns with your labels, and already computed the
+# indirect effects as draws -> just select the seven of interest.
+keep <- c("t1", "t2", "a", "h1", "b", "indirect_p", "indirect_t")
+post <- as.data.frame(draws[, keep, drop = FALSE])
+
+plot_df <- post %>%
+  pivot_longer(everything(), names_to = "label", values_to = "value") %>%
+  mutate(path = factor(path_labels[label], levels = path_order)) %>%
+  group_by(path) %>% mutate(med = median(value)) %>% ungroup() %>%
+  mutate(effect = case_when(
+    abs(med) < 0.05 ~ "negligible",
+    med > 0         ~ "increases downstream",   # h -> s is positive
+    TRUE            ~ "decreases downstream"
+  ))
+
+# ---- Point estimate + 95% CrI table (replaces the broken effects_df) -------
+effects_df <- plot_df %>%
+  group_by(label, path) %>%
+  summarise(estimate = median(value),
+            lower    = quantile(value, 0.025),
+            upper    = quantile(value, 0.975),
+            .groups  = "drop") %>%
+  mutate(path = factor(path, levels = path_order)) %>%
+  arrange(path)
+print(effects_df)        # real numbers now
+
+# ---- Half-eye posterior figure ---------------------------------------------
+pal <- c("increases downstream" = "#19798b",
+         "decreases downstream" = "#b80422",
+         "negligible"           = "#888780")
+
+p <- ggplot(plot_df, aes(x = value, y = path, fill = effect, colour = effect)) +
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "grey60", linewidth = 0.4) +
+  stat_halfeye(.width = c(0.66, 0.95), point_interval = "median_qi",
+               slab_alpha = 0.45, normalize = "groups", height = 0.9) +
+  scale_y_discrete(labels = function(l) parse(text = l)) +
+  scale_fill_manual(values = pal, name = NULL) +
+  scale_colour_manual(values = pal, name = NULL) +
+  labs(x = "Effect size (posterior)", y = NULL) +
+  mytheme+
+  theme(legend.position = "top", axis.text.y = element_text(hjust = 0))
+
+figure6_posterior <- p +
+  inset_element(dag_sem,
+                left = 0.7, bottom = 0.02,    # bottom-right corner
+                right = 1.00, top = 0.35,
+                align_to = "panel",
+                on_top = TRUE)
+
+ggsave("figures/figure6_posterior.pdf", figure6_posterior, width = 9.5, height = 8)
+ggsave("figures/figure6_posterior.png", figure6_posterior, width = 9.5, height = 8, dpi = 300)
 #=============================================
 # Cumulative burden - For Damage hypothesis
 #=============================================
@@ -2740,12 +2832,12 @@ pA_supp <- ggplot(comparison_data, aes(x = Time, y = log10(cumulative_burden + 1
                                        color = method, linetype = method)) +
   geom_line(linewidth = 1.2) +
   geom_point(size = 2) +
-  scale_color_manual(values = c("#E69F00", "#56B4E9", "#009E73")) +
+  scale_color_manual(values = c("#ee9b43", "#19798b", "#b80422")) +
   labs(x = "Time since infection (h)", 
        y = expression(log[10](Cumulative~burden)),
        color = "Method", linetype = "Method") +
   mytheme +
-  theme(legend.position = c(0.3, 0.8))
+  theme(legend.position = c(0.6, 0.25))
 
 # Panel B: Integral vs Trapezoidal (method comparison)
 method_compare <- burden_tidy_time %>%
@@ -2756,27 +2848,27 @@ pB_supp <- ggplot(method_compare, aes(x = log10(cum_burden_integral + 1),
                                       y = log10(cum_burden_trapezoid + 1))) +
   geom_point(size = 3) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50") +
-  geom_smooth(method = "lm", se = FALSE, color = "#E69F00") +
+  geom_smooth(method = "lm", se = FALSE, color = "#ee9b43") +
   labs(x = expression(log[10](Integral~of~fitted~model)),
        y = expression(log[10](Trapezoidal~sum~of~data))) +
-  annotate("text", x = 6, y = 8, 
+  annotate("text", x = 5, y = 8, 
            label = paste0("r = ", round(cor(method_compare$cum_burden_integral, 
                                             method_compare$cum_burden_trapezoid), 3)),
-           size = 5) +
+           size = 6) +
   mytheme
 
 # Panel C: THE PROBLEM - Cumulative burden vs Time (near-perfect correlation)
 pC_supp <- ggplot(method_compare, aes(x = Time, y = log10(cum_burden_integral + 1))) +
-  geom_point(size = 3, color = "#E69F00") +
+  geom_point(size = 3, color = "#ee9b43") +
   geom_smooth(method = "lm", se = TRUE, color = "black") +
-  labs(x = "Time since infection (h)",
+  labs(x = "Time since infection (hrs)",
        y = expression(log[10](Cumulative~burden))) +
   annotate("text", x = 10, y = 8, 
            label = paste0("r = ", round(cor(method_compare$Time, 
                                             method_compare$cum_burden_integral), 3)),
-           size = 5) +
-  annotate("text", x = 10, y = 7, 
-           label = "Near-deterministic\nrelationship", size = 4, color = "darkred") +
+           size = 6) +
+  annotate("text", x = 12, y = 7, 
+           label = "Near-deterministic\nrelationship", size = 6, color = "#b80422") +
   mytheme
 
 # Panel D: Residual variance after accounting for time
@@ -2799,12 +2891,12 @@ pD_supp <- ggplot(burden_tidy_time, aes(x = cum_burden_resid, y = scaled_health)
   labs(x = "Residual cumulative burden\n(after removing time effect)",
        y = "Standardized health",
        fill = "Status") +
-  annotate("text", x = 0, y = 2, 
+  annotate("text", x = -0.2, y = 1.8, 
            label = paste0("β = ", round(coef(m_resid)[2], 3), 
                           ", p = ", round(summary(m_resid)$coefficients[2,4], 3)),
-           size = 4) +
+           size = 6) +
   mytheme +
-  theme(legend.position = c(0.85, 0.85))
+  theme(legend.position = c(0.85, 0.9))
 
 # Combine
 figure_cumulative_supp <- (pA_supp | pB_supp) / (pC_supp | pD_supp) +
@@ -2813,8 +2905,8 @@ figure_cumulative_supp <- (pA_supp | pB_supp) / (pC_supp | pD_supp) +
 
 figure_cumulative_supp
 
-ggsave("figures/figureS2.pdf",  # >>> Supplementary Figure S2 (cumulative-burden methods) 
-       plot = figure_cumulative_supp, width = 10, height = 8, dpi = 300)
+ggsave("figures/figureS3.pdf",  # >>> Supplementary Figure S2 (cumulative-burden methods) 
+       plot = figure_cumulative_supp, width = 10, height = 9.2, dpi = 300)
 
 #-------------------------------------------------------------------------------
 # STATISTICAL TEST: Does cumulative burden add information beyond time?
