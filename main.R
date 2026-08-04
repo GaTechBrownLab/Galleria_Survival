@@ -82,8 +82,183 @@ control_surv  <- read.table("data/control_survival.csv", header = T, sep = ",", 
 # Common time sequence used throughout
 time_seq <- seq(0, 36, length.out = 200)
 
+
+
 #===============================================================================
-# FIGURE 1
+# FIGURE 1 Introduction: The five candidate causal structures (Introduction)
+#-------------------------------------------------------------------------------
+# Schematic only -- no statistics, no conditional-independence notation.
+# Node positions are identical in every panel (inherited from the layout used
+# by draw_dag_panel_4node), so panels differ ONLY in which arrows are present.
+#
+# NOTE: this defines a NEW function; it does not modify draw_dag_panel_4node(),
+# which Figs S3/S4 and the SEM inset still use.
+#===============================================================================
+
+draw_dag_hypothesis <- function(edges,
+                                title,
+                                claim         = NULL,
+                                faded_edges   = NULL,   # present but causally inert
+                                highlight_edges = NULL, # the distinguishing edge
+                                faded_nodes   = NULL) { # variable plays no causal role
+  
+  nodes <- data.frame(
+    name  = c("t", "p", "h", "s"),
+    x     = c(0, 1, 1, 2),
+    y     = c(0.5, 1.2, -0.2, 0.5),
+    label = c("italic(t)", "italic(p)", "italic(h)", "italic(s)"),
+    stringsAsFactors = FALSE
+  )
+  
+  edge_list <- list(
+    "t_p" = c(0, 0.5, 1,  1.2),
+    "t_h" = c(0, 0.5, 1, -0.2),
+    "t_s" = c(0, 0.5, 2,  0.5),
+    "p_h" = c(1, 1.2, 1, -0.2),
+    "p_s" = c(1, 1.2, 2,  0.5),
+    "h_s" = c(1, -0.2, 2, 0.5),
+    "h_p" = c(1, -0.2, 1, 1.2)
+  )
+  
+  col_main  <- "#19798b"   # teal, as elsewhere in the paper
+  col_hi    <- "#b80422"   # red, the distinguishing edge
+  col_faded <- "grey75"
+  
+  box_w <- 0.35; box_h <- 0.25
+  
+  node_rects <- nodes %>%
+    mutate(xmin = x - box_w/2, xmax = x + box_w/2,
+           ymin = y - box_h/2, ymax = y + box_h/2,
+           is_faded = name %in% faded_nodes,
+           border   = ifelse(is_faded, col_faded, col_main),
+           txt_col  = ifelse(is_faded, col_faded, "black"))
+  
+  adjust_arrow <- function(x1, y1, x2, y2, box_w, box_h) {
+    dx <- x2 - x1; dy <- y2 - y1; len <- sqrt(dx^2 + dy^2)
+    if (len == 0) return(c(x1, y1, x2, y2))
+    ux <- dx / len; uy <- dy / len
+    t_x <- if (abs(ux) > 0.01) (box_w/2)/abs(ux) else Inf
+    t_y <- if (abs(uy) > 0.01) (box_h/2)/abs(uy) else Inf
+    t_start <- min(t_x, t_y)
+    c(x1 + ux*t_start, y1 + uy*t_start, x2 - ux*t_start, y2 - uy*t_start)
+  }
+  
+  build_edges <- function(edge_codes) {
+    df <- data.frame()
+    for (e in edge_codes) {
+      if (e %in% names(edge_list)) {
+        co <- edge_list[[e]]
+        df <- rbind(df, data.frame(x = co[1], y = co[2],
+                                   xend = co[3], yend = co[4]))
+      }
+    }
+    if (nrow(df) > 0) {
+      df <- df %>% rowwise() %>%
+        mutate(adj = list(adjust_arrow(x, y, xend, yend, box_w, box_h)),
+               x_adj = adj[1], y_adj = adj[2],
+               xend_adj = adj[3], yend_adj = adj[4]) %>%
+        ungroup()
+    }
+    df
+  }
+  
+  e_main  <- build_edges(edges)
+  e_faded <- build_edges(faded_edges)
+  e_hi    <- build_edges(highlight_edges)
+  
+  p <- ggplot() +
+    geom_rect(data = node_rects,
+              aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax,
+                  color = border),
+              fill = "white", linewidth = 0.5) +
+    scale_color_identity() +
+    {if (nrow(e_faded) > 0)
+      geom_segment(data = e_faded,
+                   aes(x = x_adj, y = y_adj, xend = xend_adj, yend = yend_adj),
+                   arrow = arrow(length = unit(0.10, "inches"), type = "closed"),
+                   color = col_faded, linewidth = 0.4)} +
+    {if (nrow(e_main) > 0)
+      geom_segment(data = e_main,
+                   aes(x = x_adj, y = y_adj, xend = xend_adj, yend = yend_adj),
+                   arrow = arrow(length = unit(0.12, "inches"), type = "closed"),
+                   color = col_main, linewidth = 0.5)} +
+    {if (nrow(e_hi) > 0)
+      geom_segment(data = e_hi,
+                   aes(x = x_adj, y = y_adj, xend = xend_adj, yend = yend_adj),
+                   arrow = arrow(length = unit(0.14, "inches"), type = "closed"),
+                   color = col_hi, linewidth = 1.0)} +
+    geom_text(data = node_rects,
+              aes(x = x, y = y, label = label, color = txt_col),
+              parse = TRUE, size = 4.5) +
+    coord_fixed(ratio = 1, xlim = c(-0.5, 2.5), ylim = c(-1.0, 1.7)) +
+    theme_void() +
+    ggtitle(title) +
+    theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"))
+  
+  # plain-text claim line (parse = FALSE, unlike the S3/S4 subtitles)
+  if (!is.null(claim)) {
+    p <- p + annotate("text", x = 1, y = -0.72, label = claim,
+                      size = 3.1, color = "grey30", parse = FALSE)
+  }
+  p
+}
+
+#-------------------------------------------------------------------------------
+# The five hypotheses
+#-------------------------------------------------------------------------------
+
+dagH_burden <- draw_dag_hypothesis(
+  edges       = c("t_p", "p_s"),
+  faded_nodes = "h",
+  title       = "Burden-driven"
+  #claim       = "risk set by current burden"
+)
+
+dagH_intrinsic <- draw_dag_hypothesis(
+  edges       = c("t_h", "h_s", "t_p"),
+  title       = "Intrinsic decline"
+  #claim       = "decline independent of pathogen"
+)
+
+dagH_collapse <- draw_dag_hypothesis(
+  edges = c("t_h", "h_p", "p_s"),
+  title = "Immune collapse"
+  #claim = "condition fails first"
+)
+
+dagH_instant <- draw_dag_hypothesis(
+  edges = c("t_p", "p_h", "h_s"),
+  title = "Instantaneous damage"
+  #claim = "equal burden, equal condition"
+)
+
+dagH_cumulative <- draw_dag_hypothesis(
+  edges = c("t_p", "t_h", "p_h", "h_s"),   
+  title = "Cumulative damage"
+  #claim = "condition depends on history"
+)
+
+#-------------------------------------------------------------------------------
+# Assemble
+#-------------------------------------------------------------------------------
+# One row keeps all five directly comparable; the 3+2 alternative is below.
+
+figure1 <- (dagH_burden | dagH_intrinsic | dagH_collapse |
+              dagH_instant | dagH_cumulative) +
+  plot_annotation(tag_levels = 'A') &
+  theme(plot.tag = element_text(face = "bold", size = 12))
+
+# Alternative 2-row layout if one row is too cramped:
+# figure1_dags <- (dagH_burden | dagH_intrinsic | dagH_collapse) /
+#                 (dagH_instant | dagH_cumulative | plot_spacer()) +
+#   plot_annotation(tag_levels = 'A') &
+#   theme(plot.tag = element_text(face = "bold", size = 12))
+
+ggsave("figures/figure1.pdf",   # Manuscript Intro Figure (candidate structures)
+       plot = figure1, width = 11, height = 3.0, units = "in", dpi = 300)
+
+#===============================================================================
+# FIGURE 2
 #===============================================================================
 # Survival Parameters
 
@@ -145,7 +320,7 @@ mort_fitted_df <- data.frame(
 # Create inset plot
 inset_plot <- ggplot(mort_fitted_df, aes(x = time, y = mortality)) +
   geom_line(color = "#b80422", linewidth = 1) +
-  scale_x_continuous(breaks = c(0, 18, 36)) +
+  scale_x_continuous(breaks = c(0, 12, 24, 36)) +
   scale_y_continuous(breaks = c(0, 35, 70)) +
   labs(x = "Time (hrs)", y = (bquote('m(t) '(h^-1)))) +
   theme_bw() +
@@ -260,16 +435,14 @@ p1D <- ggplot(df_s1, aes(x = p, y = m_t)) +
 # Combine all panels
 scenario1 <- (p1C / p1D) + plot_layout(heights = c(1, 1))
 
-figure1 <- (pA_with_inset | scenario1) +
+figure2 <- (pA_with_inset | scenario1) +
   plot_layout(widths = c(3, 1))+
   plot_annotation(tag_levels = 'A') &
   theme(plot.tag = element_text(face = "bold", size = 14)) 
 
-figure1
-
 # Save
-ggsave("figures/figure1.pdf",  # >>> Manuscript Figure 1 (survival + Gompertz scenarios) 
-       plot = figure1, width = 10, height = 6, units = "in", dpi = 300)
+ggsave("figures/figure2.pdf",  # >>> Manuscript Figure 1 (survival + Gompertz scenarios) 
+       plot = figure2, width = 10, height = 6, units = "in", dpi = 300)
 
 #-------------------------------------------------------------------------------
 # Estimated percentage of bacteria 
@@ -495,14 +668,14 @@ ci_K_total <- quantile(boot_curve_full$t[, 1], probs = c(0.025, 0.975), na.rm = 
 ci_K_alive <- quantile(boot_curve_a_full$t[, 1], probs = c(0.025, 0.975), na.rm = TRUE)
 
 #===============================================================================
-# FIGURE 2
+# FIGURE 3
 #===============================================================================
 
 # Define colors and linetypes
 line_colors <- c("Total population" = "#ee9b43", "Alive only" = "#19798b")
 line_types  <- c("Total population" = "solid", "Alive only" = "dashed")
 
-figure2 <- ggplot(burden_tidy_time, aes(x = Time, y = log_CFU)) +
+figure3 <- ggplot(burden_tidy_time, aes(x = Time, y = log_CFU)) +
   geom_jitter(aes(fill = status), size = 3, shape = 21, alpha = 0.6, color = "black") +
   # Total population fit
   geom_ribbon(data = pred_time_full, aes(x = Time, ymin = lower, ymax = upper), 
@@ -541,8 +714,8 @@ figure2 <- ggplot(burden_tidy_time, aes(x = Time, y = log_CFU)) +
     linetype = guide_legend(order = 2)
   )
 
-ggsave("figures/figure2.pdf",  # >>> Manuscript Figure 2 (logistic growth) 
-       plot = figure2, width = 6, height = 5, units = "in", dpi = 300)
+ggsave("figures/figure3.pdf",  # >>> Manuscript Figure 2 (logistic growth) 
+       plot = figure3, width = 6, height = 5, units = "in", dpi = 300)
 
 
 ggplot(burden_tidy_time, aes(Time, cfu)) +
@@ -992,13 +1165,13 @@ p4B <- ggplot(dynamic_period, aes(x = log_CFU, y = melanization)) +
 # Individual-level binary points (replaces obs_props block)
 # ----------------------------------------------------------------------------
 metric_offsets <- c("AT50"     = -0.5,
-                    "MT50" =  0.0,
+                    "MT50"     =  0.0,
                     "LT50"     =  0.5)
 
 indiv_pts <- dat_cs %>%
   pivot_longer(c(active, unmel, alive),
                names_to = "metric_short", values_to = "y") %>%
-  mutate(metric = recode(metric_short,
+  mutate(metric = dplyr::recode(metric_short,
                          active = "AT50",
                          unmel  = "MT50",
                          alive  = "LT50"),
@@ -1014,7 +1187,7 @@ obs_props <- dat_cs %>%
                names_to = "metric_short", values_to = "y") %>%
   group_by(time, metric_short) %>%
   summarise(p = mean(y), n = n(), .groups = "drop") %>%
-  mutate(metric = recode(metric_short,
+  mutate(metric = dplyr::recode(metric_short,
                          active = "AT50",
                          unmel  = "MT50",
                          alive  = "LT50"))
@@ -1042,12 +1215,12 @@ p4C <- ggplot(curves, aes(x = time, y = p, color = metric)) +
 # ----------------------------------------------------------------------------
 # Compose Figure 4
 # ----------------------------------------------------------------------------
-figure3 <- (p4A | p4B | p4C) +
+figure4 <- (p4A | p4B | p4C) +
   plot_layout(heights = c(1.1, 1)) +
   plot_annotation(tag_levels = "A") &
   theme(plot.tag = element_text(face = "bold", size = 14))
 
-ggsave("figures/figure3.pdf",  # >>> Manuscript Figure 3 (activity/melanization + T50). NB filename is figure4.pdf (legacy) but this renders as Fig 3.
+ggsave("figures/figure4.pdf",  # >>> Manuscript Figure 4 (activity/melanization + T50)
        plot = figure4, width = 13, height = 4.5, units = "in", dpi = 300)
 
 # ----------------------------------------------------------------------------
@@ -1083,9 +1256,1205 @@ summary(gam(health_combined ~ Time + s(log_CFU), data = burden_tidy_time))  # re
 logistf(survival ~ activity + scaled_cfu, data = burden_tidy_time)
 logistf(survival ~ melanization + scaled_cfu, data = burden_tidy_time)
 
+
+# =============================================================================
+# Causal Analysis 
+# =============================================================================
+
+# =============================================================================
+# Three-node DAG panels function
+# =============================================================================
+
+# Custom function to draw DAG panel
+draw_dag_panel <- function(edges, title, subtitle) {
+  
+  
+  # Node positions (matching uploaded image layout)
+  nodes <- data.frame(
+    name = c("t", "p", "s"),
+    x = c(0, 1, 2),
+    y = c(0, 1, 0),
+    label = c("italic(t)", "italic(p)", "italic(s)")
+  )
+  
+  # Create edge dataframe based on which edges are present
+  edge_df <- data.frame()
+  
+  if ("t_p" %in% edges) {
+    edge_df <- rbind(edge_df, data.frame(
+      x = 0, y = 0, xend = 1, yend = 1, curve = 0
+    ))
+  }
+  if ("p_s" %in% edges) {
+    edge_df <- rbind(edge_df, data.frame(
+      x = 1, y = 1, xend = 2, yend = 0, curve = 0
+    ))
+  }
+  if ("t_s" %in% edges) {
+    edge_df <- rbind(edge_df, data.frame(
+      x = 0, y = 0, xend = 2, yend = 0, curve = 0
+    ))
+  }
+  
+  # Box dimensions
+  box_w <- 0.35
+  box_h <- 0.25
+  
+  # Create node rectangles
+  node_rects <- nodes %>%
+    mutate(
+      xmin = x - box_w/2,
+      xmax = x + box_w/2,
+      ymin = y - box_h/2,
+      ymax = y + box_h/2
+    )
+  
+  # Adjust arrow endpoints to stop at box edges
+  adjust_arrow <- function(x1, y1, x2, y2, box_w, box_h) {
+    # Direction vector
+    dx <- x2 - x1
+    dy <- y2 - y1
+    len <- sqrt(dx^2 + dy^2)
+    
+    # Unit vector
+    ux <- dx / len
+    uy <- dy / len
+    
+    # Adjust start point (move away from center of start node)
+    # Find intersection with box edge
+    if (abs(ux) > 0.01) {
+      t_x <- (box_w/2) / abs(ux)
+    } else {
+      t_x <- Inf
+    }
+    if (abs(uy) > 0.01) {
+      t_y <- (box_h/2) / abs(uy)
+    } else {
+      t_y <- Inf
+    }
+    t_start <- min(t_x, t_y)
+    
+    x1_adj <- x1 + ux * t_start
+    y1_adj <- y1 + uy * t_start
+    
+    # Adjust end point (stop before center of end node)
+    x2_adj <- x2 - ux * t_start
+    y2_adj <- y2 - uy * t_start
+    
+    return(c(x1_adj, y1_adj, x2_adj, y2_adj))
+  }
+  
+  # Adjust all edges
+  if (nrow(edge_df) > 0) {
+    edge_df_adj <- edge_df %>%
+      rowwise() %>%
+      mutate(
+        adj = list(adjust_arrow(x, y, xend, yend, box_w, box_h)),
+        x_adj = adj[1],
+        y_adj = adj[2],
+        xend_adj = adj[3],
+        yend_adj = adj[4]
+      ) %>%
+      ungroup()
+  }
+  
+  # Build plot
+  p <- ggplot() +
+    # Draw boxes
+    geom_rect(data = node_rects,
+              aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+              fill = "white", color = "#19798b", linewidth = 0.7) +
+    # Draw arrows
+    {if (nrow(edge_df) > 0) 
+      geom_segment(data = edge_df_adj,
+                   aes(x = x_adj, y = y_adj, xend = xend_adj, yend = yend_adj),
+                   arrow = arrow(length = unit(0.15, "inches"), type = "closed"),
+                   color = "#19798b", linewidth = 0.7)
+    } +
+    # Draw node labels
+    geom_text(data = nodes, aes(x = x, y = y, label = label),
+              parse = TRUE, size = 7, color = "black") +
+    # Add subtitle (conditional independence statement)
+    annotate("text", x = 1, y = -0.5, label = subtitle, 
+             size = 7, color = "black", parse = T) +
+    # Styling
+    coord_fixed(ratio = 1, xlim = c(-0.5, 2.5), ylim = c(-0.7, 1.4)) +
+    theme_void() +
+    ggtitle(title) +
+    theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"))
+  
+  return(p)
+}
+
+#===============================================================================
+# Four-node DAG panels function
+#===============================================================================
+
+draw_dag_panel_4node <- function(edges, title, subtitles, dashed_edges = NULL) {
+  
+  nodes <- data.frame(
+    name = c("t", "p", "h", "s"),
+    x = c(0, 1, 1, 2),
+    y = c(0.5, 1.2, -0.2, 0.5),
+    label = c("italic(t)", "italic(p)", "italic(h)", "italic(s)")
+  )
+  
+  edge_list <- list(
+    "t_p" = c(0, 0.5, 1, 1.2),
+    "t_h" = c(0, 0.5, 1, -0.2),
+    "t_s" = c(0, 0.5, 2, 0.5),
+    "p_h" = c(1, 1.2, 1, -0.2),
+    "p_s" = c(1, 1.2, 2, 0.5),
+    "h_s" = c(1, -0.2, 2, 0.5),
+    "h_p" = c(1, -0.2, 1, 1.2)
+  )
+  
+  box_w <- 0.35; box_h <- 0.25
+  
+  node_rects <- nodes %>%
+    mutate(xmin = x - box_w/2, xmax = x + box_w/2,
+           ymin = y - box_h/2, ymax = y + box_h/2)
+  
+  adjust_arrow <- function(x1, y1, x2, y2, box_w, box_h) {
+    dx <- x2 - x1; dy <- y2 - y1; len <- sqrt(dx^2 + dy^2)
+    if (len == 0) return(c(x1, y1, x2, y2))
+    ux <- dx / len; uy <- dy / len
+    t_x <- if (abs(ux) > 0.01) (box_w/2)/abs(ux) else Inf
+    t_y <- if (abs(uy) > 0.01) (box_h/2)/abs(uy) else Inf
+    t_start <- min(t_x, t_y)
+    c(x1 + ux*t_start, y1 + uy*t_start, x2 - ux*t_start, y2 - uy*t_start)
+  }
+  
+  # Helper: build adjusted edge df from a vector of edge codes
+  build_edges <- function(edge_codes) {
+    df <- data.frame()
+    for (e in edge_codes) {
+      if (e %in% names(edge_list)) {
+        co <- edge_list[[e]]
+        df <- rbind(df, data.frame(x = co[1], y = co[2], xend = co[3], yend = co[4]))
+      }
+    }
+    if (nrow(df) > 0) {
+      df <- df %>% rowwise() %>%
+        mutate(adj = list(adjust_arrow(x, y, xend, yend, box_w, box_h)),
+               x_adj = adj[1], y_adj = adj[2], xend_adj = adj[3], yend_adj = adj[4]) %>%
+        ungroup()
+    }
+    df
+  }
+  
+  edge_df_adj   <- build_edges(edges)
+  dashed_df_adj <- build_edges(dashed_edges)
+  
+  p <- ggplot() +
+    geom_rect(data = node_rects,
+              aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+              fill = "white", color = "#19798b", linewidth = 0.5) +
+    # solid edges
+    {if (nrow(edge_df_adj) > 0)
+      geom_segment(data = edge_df_adj,
+                   aes(x = x_adj, y = y_adj, xend = xend_adj, yend = yend_adj),
+                   arrow = arrow(length = unit(0.12, "inches"), type = "closed"),
+                   color = "#19798b", linewidth = 0.5)} +
+    # grey dashed "also-rejected variant" edges
+    {if (nrow(dashed_df_adj) > 0)
+      geom_segment(data = dashed_df_adj,
+                   aes(x = x_adj, y = y_adj, xend = xend_adj, yend = yend_adj),
+                   arrow = arrow(length = unit(0.12, "inches"), type = "closed"),
+                   color = "grey60", linetype = "dashed", linewidth = 0.5)} +
+    geom_text(data = nodes, aes(x = x, y = y, label = label),
+              parse = TRUE, size = 5, color = "black") +
+    coord_fixed(ratio = 1, xlim = c(-0.5, 2.5), ylim = c(-1.1, 1.7)) +
+    theme_void() +
+    ggtitle(title) +
+    theme(plot.title = element_text(hjust = 0.5, size = 11, face = "italic"))
+  
+  for (i in seq_along(subtitles)) {
+    p <- p + annotate("text", x = 1, y = -0.65 - (i-1)*0.25,
+                      label = subtitles[i], size = 4, color = "black", parse = TRUE)
+  }
+  p
+}
+
+
+# Show correlation between Activity and Melanization.
+# Correlate them in the SAME (health) orientation they enter the composite:
+# activity (higher = healthier) and (4 - melanization) = raw melanization
+# (higher = healthier). Using the stored severity `melanization` here would only
+# flip the SIGN of r (magnitude and p-value are identical) and report a negative
+# r that contradicts the "both measure health, so sum them" justification.
+melan_health <- 4 - burden_tidy_time$melanization      # raw melanization, 4 = healthy
+cor_AM <- cor(burden_tidy_time$activity, melan_health,
+              use = "complete.obs")
+cat("Correlation between Activity and Melanization (both health-oriented):", round(cor_AM, 3), "\n")
+
+# Test correlation significance
+cor_test <- cor.test(burden_tidy_time$activity, melan_health)
+cat("Correlation p-value:", cor_test$p.value, "\n\n") 
+
+# Create combined health metric
+
+burden_tidy_time <- burden_tidy_time %>%
+  mutate(
+    # Combined health = activity + (4 - melanization).
+    # `melanization` is the severity form (4 - raw), so (4 - melanization)
+    # recovers the raw health-oriented value (4 = healthy). Higher = healthier.
+    health_combined = activity + (4 - melanization),
+    scaled_health_combined = scale(health_combined)[,1]
+  )
+
+#==============================================================================
+# Causal model formalization (dagitty)
+#------------------------------------------------------------------------------
+# Encodes the candidate DAGs underlying Figures 3 and 5 and prints the testable
+# conditional independencies derived by d-separation. These are exactly the
+# implications tested by regression downstream:
+#   Fig 3: m_cond            (t -> p -> s implies t _||_ s | p ; etc.)
+#   Fig 5: m_D, m_E, m_F, m_F_supp
+# Reference: Textor et al. 2016 (dagitty). dagitty is loaded above.
+#==============================================================================
+
+# --- Three-node candidate models (Figure 3: t, p, s) ---
+dagi3_mediation <- dagitty("dag { t -> p -> s }")            # 3A: pure pathogen mediation
+dagi3_no_med    <- dagitty("dag { t -> p ; t -> s }")        # 3B: no pathogen mediation
+dagi3_multipath <- dagitty("dag { t -> p -> s ; t -> s }")   # 3C: multi-path (supported)
+
+cat("\n=== Implied conditional independencies: 3-node models (Figure 3) ===\n")
+cat("\n3A  t -> p -> s  (pure pathogen mediation):\n")
+print(impliedConditionalIndependencies(dagi3_mediation))   # expect: t _||_ s | p
+cat("\n3B  t -> p ; t -> s  (no pathogen mediation):\n")
+print(impliedConditionalIndependencies(dagi3_no_med))      # expect: p _||_ s | t
+cat("\n3C  t -> p -> s ; t -> s  (multi-path, supported):\n")
+print(impliedConditionalIndependencies(dagi3_multipath))   # saturated: no implications
+
+# --- Four-node candidate models (Figure 5: t, p, h, s) ---
+dagi4_pmed_health <- dagitty("dag { t -> p -> h -> s }")                  # 5A: pathogen-mediated health
+dagi4_collapse    <- dagitty("dag { t -> h -> p -> s }")                  # 5B: immune collapse
+dagi4_bottleneck  <- dagitty("dag { t -> p ; t -> h ; p -> h ; h -> s }") # 5C: health bottleneck (supported)
+
+cat("\n=== Implied conditional independencies: 4-node models (Figure 5) ===\n")
+cat("\n5A  t -> p -> h -> s  (pathogen-mediated health):\n")
+print(impliedConditionalIndependencies(dagi4_pmed_health))  # includes t _||_ h | p  (Fig 5D)
+cat("\n5B  t -> h -> p -> s  (immune collapse):\n")
+print(impliedConditionalIndependencies(dagi4_collapse))     # includes h _||_ s | p  (Fig 5E)
+cat("\n5C  t -> p ; t -> h ; p -> h ; h -> s  (supported):\n")
+print(impliedConditionalIndependencies(dagi4_bottleneck))   # s _||_ t | h and s _||_ p | h  (Fig 5F)
+
+#==============================================================================
+# FIGURE S3: 3-node DAGs + diagnostic  plots
+# Panels A-C: DAGs for alternative causal models (t,p,S)
+# Panels D-E: Diagnostic plots falsifying models A and B
+#==============================================================================
+
+# --- DAG panels ---
+
+dag_A <- draw_dag_panel(
+  edges = c("t_p", "p_s"),
+  title = "",
+  subtitle = "italic(t)~symbol('\\136')~italic(s)~'|'~italic(p)"
+)
+
+dag_B <- draw_dag_panel(
+  edges = c("t_p", "t_s"),
+  title = "",
+  subtitle = "italic(p)~symbol('\\136')~italic(s)~'|'~italic(t)"
+)
+
+dag_C <- draw_dag_panel(
+  edges = c("t_p", "p_s", "t_s"),
+  title = "",
+  subtitle = "Saturated"
+)
+
+# This is the final figure 3
+
+# ----------------------------------------------------------------------------
+# Data prep
+# ----------------------------------------------------------------------------
+dat_fig3 <- burden_tidy %>%
+  filter(Time < 37, !is.na(status), !is.na(log_CFU)) %>%
+  mutate(
+    alive    = as.integer(status == "Alive"),
+    cfu_bin  = cut(log_CFU,
+                   breaks = quantile(log_CFU, c(0, 1/3, 2/3, 1), na.rm = TRUE),
+                   labels = c("Low", "Medium", "High"),
+                   include.lowest = TRUE),
+    time_bin = cut(Time,
+                   breaks = c(-0.01, 12, 24, 48),
+                   labels = c("0–12h", "12–24h", "24–48h"))
+  )
+
+
+# ----------------------------------------------------------------------------
+# Single additive logistic GLM — matches the test you report (β_Time, β_logCFU)
+# ----------------------------------------------------------------------------
+m_cond <- glm(alive ~ Time + log_CFU, data = dat_fig3, family = binomial)
+summary(m_cond)  # β_Time and β_logCFU are your reported test statistics
+
+# Illustrative levels of the conditioning variable
+cfu_levels  <- quantile(dat_fig3$log_CFU, c(0.15, 0.5, 0.85), na.rm = TRUE)
+time_levels <- c(6, 18, 30)
+names(cfu_levels)  <- c("Low", "Medium", "High")
+names(time_levels) <- c("0–12h", "12–24h", "24–48h")
+
+
+# ─── Null prediction for Panel D: what we'd see if DAG A (t ⊥ S | p) held ───
+# Under DAG A, survival depends only on log_CFU. Fit that null model.
+m_null_D <- glm(survival ~ log_CFU, data = burden_tidy_time, family = binomial)
+
+null_D <- purrr::map_dfr(names(cfu_levels), function(lbl) {
+  nd <- data.frame(Time = c(0, 36), log_CFU = cfu_levels[[lbl]])
+  nd$fit <- plogis(predict(m_null_D, newdata = nd))
+  nd$cfu_bin <- factor(lbl, levels = c("Low", "Medium", "High"))
+  nd
+})
+
+
+# ─── Null prediction for Panel E: what we'd see if DAG B (p ⊥ S | t) held ───
+m_null_E <- glm(survival ~ Time, data = burden_tidy_time, family = binomial)
+
+null_E <- purrr::map_dfr(names(time_levels), function(lbl) {
+  nd <- data.frame(log_CFU = range(burden_tidy_time$log_CFU, na.rm = TRUE),
+                   Time = time_levels[[lbl]])
+  nd$fit <- plogis(predict(m_null_E, newdata = nd))
+  nd$bin <- factor(lbl, levels = names(time_levels))   # <-- self-consistent
+  nd
+})
+
+
+# ----------------------------------------------------------------------------
+# Panel D: P(alive) vs Time at three illustrative CFU levels
+# ----------------------------------------------------------------------------
+pred_D <- purrr::map_dfr(names(cfu_levels), function(lbl) {
+  nd <- data.frame(Time = seq(0, 36, length.out = 200),
+                   log_CFU = cfu_levels[[lbl]])
+  p <- predict(m_cond, newdata = nd, type = "link", se.fit = TRUE)
+  nd$fit <- plogis(p$fit)
+  nd$lwr <- plogis(p$fit - 1.96 * p$se.fit)
+  nd$upr <- plogis(p$fit + 1.96 * p$se.fit)
+  nd$bin <- factor(lbl, levels = c("Low", "Medium", "High"))
+  nd
+})
+
+bin_palette <- c("Low" = "#19798b", "Medium" = "#ee9b43", "High" = "#b80422")
+
+p3D <- ggplot() +
+  geom_jitter(data = dat_fig3,
+              aes(x = Time, y = alive, color = cfu_bin),
+              width = 0.3, height = 0.035, alpha = 0.5, size = 2) +
+  #geom_ribbon(data = pred_D,
+  #            aes(x = Time, ymin = lwr, ymax = upr, fill = bin),
+  #            alpha = 0.12) +
+  geom_line(data = null_D, aes(x = Time, y = fit, color = cfu_bin),
+            linetype = "dashed", linewidth = 1, alpha = 0.6)+
+  geom_line(data = pred_D,
+            aes(x = Time, y = fit, color = bin),
+            linewidth = 1.1) +
+  scale_color_manual(values = bin_palette,
+                     name = expression(log[10](CFU))) +
+  scale_fill_manual(values = bin_palette, guide = "none") +
+  scale_y_continuous(breaks = c(0, 1), labels = c("Dead", "Alive"),
+                     limits = c(-0.12, 1.12)) +
+  scale_x_continuous(limits = c(0, 36), breaks = seq(0, 36, 6)) +
+  labs(x = "Time (hrs, t)", y = "Survival (s)") +
+  mytheme +
+  theme(legend.position = c(0.2, 0.4))
+
+# ----------------------------------------------------------------------------
+# Panel E: P(alive) vs log_CFU at three illustrative time levels
+# ----------------------------------------------------------------------------
+pred_E <- purrr::map_dfr(names(time_levels), function(lbl) {
+  nd <- data.frame(log_CFU = seq(min(dat_fig3$log_CFU),
+                                 max(dat_fig3$log_CFU),
+                                 length.out = 200),
+                   Time = time_levels[[lbl]])
+  p <- predict(m_cond, newdata = nd, type = "link", se.fit = TRUE)
+  nd$fit <- plogis(p$fit)
+  nd$lwr <- plogis(p$fit - 1.96 * p$se.fit)
+  nd$upr <- plogis(p$fit + 1.96 * p$se.fit)
+  nd$bin <- factor(lbl, levels = c("0–12h", "12–24h", "24–48h"))
+  nd
+})
+
+time_palette <- c("0–12h" = "#19798b", "12–24h" = "#ee9b43", "24–48h" = "#b80422")
+
+p3E <- ggplot() +
+  geom_jitter(data = dat_fig3,
+              aes(x = log_CFU, y = alive, color = time_bin),
+              width = 0.08, height = 0.035, alpha = 0.5, size = 2) +
+  #geom_ribbon(data = pred_E,
+  #            aes(x = log_CFU, ymin = lwr, ymax = upr, fill = bin),
+  #            alpha = 0.12) +
+  geom_line(data = null_E, aes(x = log_CFU, y = fit, color = bin),
+            linetype = "dashed", linewidth = 1, alpha = 0.6)+
+  geom_line(data = pred_E,
+            aes(x = log_CFU, y = fit, color = bin),
+            linewidth = 1.1) +
+  scale_color_manual(values = time_palette, name = "Time") +
+  scale_fill_manual(values = time_palette, guide = "none") +
+  scale_y_continuous(breaks = c(0, 1), labels = c("Dead", "Alive"),
+                     limits = c(-0.12, 1.12)) +
+  labs(x = expression(log[10](CFU, p)), y = NULL) +
+  mytheme+
+  theme(legend.position = c(0.2, 0.4),
+        axis.text.y = element_blank())
+
+# Shared display limits for the 3-node DAG panels. These match the coord_fixed()
+# limits set inside draw_dag_panel() so the conditional-independence subtitle
+# (placed at y = -0.5) is not clipped when the panels are composed by patchwork.
+
+dag_xlim <- c(-0.1, 2.3)
+dag_ylim <- c(-0.3, 1.6)
+
+dag_A <- dag_A + coord_cartesian(xlim = dag_xlim, ylim = dag_ylim, clip = "off")
+dag_B <- dag_B + coord_cartesian(xlim = dag_xlim, ylim = dag_ylim, clip = "off")
+dag_C <- dag_C + coord_cartesian(xlim = dag_xlim, ylim = dag_ylim, clip = "off")
+
+
+figureS3 <- (figure_s2 | dag_A | dag_B | dag_C) / (p3D | p3E) +
+  plot_layout(heights = c(1, 2)) +
+  plot_annotation(tag_levels = "A") &
+  theme(plot.tag = element_text(face = "bold", size = 14))
+
+
+ggsave("figures/figureS3.pdf",  # >>> Supplementary Figure S3 (m(p) mapping + 3-node pathogen DAGs + diagnostics)
+       plot = figureS3, width = 11, height = 9, units = "in", dpi = 300)
+
+
+# ============================================================================
+# FIGURE S4: Health-mediated causal analysis
+# A,B,C: DAGs (h mediates p; p mediates h; h as unique bottleneck)
+# D: rejects A via t ⊥ h | p
+# E: rejects B via h ⊥ S | p
+# F: supports C via S ⊥ t | h (and report S ⊥ p | h in caption)
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# 1. Health composite. `melanization` is the severity form (4 - raw), so
+#    (4 - melanization) recovers raw (4 = healthy); higher h = healthier.
+# ----------------------------------------------------------------------------
+dat_fig5 <- burden_tidy_time %>%
+  filter(!is.na(activity), !is.na(melanization),
+         !is.na(survival), !is.na(log_CFU)) %>%
+  mutate(h = activity + (4 - melanization))   # higher h = healthier
+
+
+dag5_A <- draw_dag_panel_4node(
+  edges = c("t_p", "p_h", "h_s"),
+  dashed_edges = "p_s",           # p → s also-rejected variant
+  title = "", subtitles = "italic(t)~symbol('\\136')~italic(h)~'|'~italic(p)"
+)
+
+dag5_B <- draw_dag_panel_4node(
+  edges = c("t_h", "h_p", "p_s"),
+  dashed_edges = "t_p",           # t → p also-rejected variant
+  title = "", subtitles = "italic(h)~symbol('\\136')~italic(S)~'|'~italic(p)"
+)
+
+dag5_C <- draw_dag_panel_4node(
+  edges = c("t_p", "t_h", "p_h", "h_s"),
+  dashed_edges = NULL,            # survivor, no variant
+  title = "",
+  subtitles = c("italic(s)~symbol('\\136')~italic(t)~'|'~italic(h)",
+                "italic(s)~symbol('\\136')~italic(p)~'|'~italic(h)")
+)
+
+# ----------------------------------------------------------------------------
+# Shared conditioning levels & palettes
+# ----------------------------------------------------------------------------
+cfu_levels <- quantile(dat_fig5$log_CFU, c(0.15, 0.50, 0.85), na.rm = TRUE)
+h_levels   <- quantile(dat_fig5$h,       c(0.15, 0.50, 0.85), na.rm = TRUE)
+names(cfu_levels) <- c("Low", "Medium", "High")
+names(h_levels)   <- c("Low h", "Medium h", "High h")
+
+pal_cfu <- c("Low" = "#19798b", "Medium" = "#ee9b43", "High" = "#b80422")
+pal_h   <- c("Low h" = "#b80422", "Medium h" = "#ee9b43", "High h" = "#19798b") # inverted: high h = good = teal
+
+dat_binned <- dat_fig5 %>%
+  mutate(cfu_bin = cut(log_CFU,
+                       breaks = quantile(log_CFU, c(0,1/3,2/3,1), na.rm = TRUE),
+                       labels = names(cfu_levels), include.lowest = TRUE),
+         h_bin = cut(h,
+                     breaks = c(-0.01, 2.5, 5.5, 7.01),
+                     labels = c("Low h", "Medium h", "High h")))
+
+# ----------------------------------------------------------------------------
+# binned data (with pre-computed jitter)
+# ----------------------------------------------------------------------------
+dat_binned <- dat_fig5 %>%
+  mutate(
+    cfu_bin = cut(log_CFU,
+                  breaks = quantile(log_CFU, c(0, 1/3, 2/3, 1), na.rm = TRUE),
+                  labels = c("Low", "Medium", "High"), include.lowest = TRUE),
+    h_bin   = cut(h,
+                  breaks = c(-0.01, 2.5, 5.5, 7.01),
+                  labels = c("Low h", "Medium h", "High h")),
+    survival_jitter = survival + runif(n(), -0.04, 0.04)   # pre-computed
+  )
+
+cfu_levels <- quantile(dat_fig5$log_CFU, c(0.15, 0.50, 0.85), na.rm = TRUE)
+h_levels   <- c("Low h" = 1, "Medium h" = 4, "High h" = 7)
+names(cfu_levels) <- c("Low", "Medium", "High")
+
+pal_cfu <- c("Low" = "#19798b", "Medium" = "#ee9b43", "High" = "#b80422")
+pal_h   <- c("Low h" = "#b80422", "Medium h" = "#ee9b43", "High h" = "#19798b")
+
+
+# ----------------------------------------------------------------------------
+# 3. Panel D — rejects A: h vs Time at 3 CFU levels
+# ----------------------------------------------------------------------------
+m_D      <- lm(h ~ Time + log_CFU, data = dat_fig5)
+m_D_null <- lm(h ~ log_CFU,        data = dat_fig5)
+
+pred_D <- purrr::map_dfr(names(cfu_levels), function(lbl) {
+  nd <- data.frame(Time = seq(0, 36, length.out = 200), log_CFU = cfu_levels[[lbl]])
+  p <- predict(m_D, newdata = nd, se.fit = TRUE)
+  nd$fit <- p$fit
+  nd$bin <- factor(lbl, levels = names(cfu_levels)); nd
+})
+null_D <- purrr::map_dfr(names(cfu_levels), function(lbl) {
+  nd <- data.frame(Time = c(0, 36), log_CFU = cfu_levels[[lbl]])
+  nd$fit <- predict(m_D_null, newdata = nd)
+  nd$bin <- factor(lbl, levels = names(cfu_levels)); nd
+})
+
+p5D <- ggplot() +
+  geom_jitter(data = dat_binned, aes(x = Time, y = h, color = cfu_bin),
+              size = 2, alpha = 0.5, width = 0.3, height = 0.1) +
+  geom_line(data = null_D, aes(x = Time, y = fit, color = bin),
+            linetype = "dashed", linewidth = 0.7, alpha = 0.6) +
+  geom_line(data = pred_D, aes(x = Time, y = fit, color = bin), linewidth = 1.1) +
+  scale_color_manual(values = pal_cfu, name = expression(log[10](CFU))) +
+  scale_x_continuous(limits = c(0, 36), breaks = seq(0, 36, 6)) +
+  labs(x = "Time (hrs, t)", y = "Health score (h)") + mytheme +
+  theme(legend.position = "none")
+
+# ----------------------------------------------------------------------------
+# 4. Panel E — rejects B: S vs h at 3 CFU levels
+# ----------------------------------------------------------------------------
+m_E      <- glm(survival ~ h + log_CFU, data = dat_fig5, family = binomial)
+m_E_null <- glm(survival ~ log_CFU,     data = dat_fig5, family = binomial)
+
+pred_E <- purrr::map_dfr(names(cfu_levels), function(lbl) {
+  nd <- data.frame(h = seq(min(dat_fig5$h), max(dat_fig5$h), length.out = 200),
+                   log_CFU = cfu_levels[[lbl]])
+  nd$fit <- plogis(predict(m_E, newdata = nd))
+  nd$bin <- factor(lbl, levels = names(cfu_levels)); nd
+})
+null_E <- purrr::map_dfr(names(cfu_levels), function(lbl) {
+  nd <- data.frame(h = range(dat_fig5$h, na.rm = TRUE), log_CFU = cfu_levels[[lbl]])
+  nd$fit <- plogis(predict(m_E_null, newdata = nd))
+  nd$bin <- factor(lbl, levels = names(cfu_levels)); nd
+})
+
+p5E <- ggplot() +
+  geom_jitter(data = dat_binned,
+              aes(x = h, y = survival_jitter, color = cfu_bin),
+              size = 2, alpha = 0.5, width = 0.15, height = 0) +
+  geom_line(data = null_E, aes(x = h, y = fit, color = bin),
+            linetype = "dashed", linewidth = 0.7, alpha = 0.6) +
+  geom_line(data = pred_E, aes(x = h, y = fit, color = bin), linewidth = 1.1) +
+  scale_color_manual(values = pal_cfu, name = expression(log[10](CFU))) +
+  scale_y_continuous(breaks = c(0,1), labels = c("Dead","Alive"), limits = c(-0.12, 1.12)) +
+  labs(x = "Health score (h)", y = "Survival (s)") + mytheme +
+  theme(legend.position = c(.7, .35))
+
+# ----------------------------------------------------------------------------
+# 5. Panel F — supports C: S vs Time at 3 h levels
+# ----------------------------------------------------------------------------
+m_F      <- glm(survival ~ Time + h, data = dat_fig5, family = binomial)
+m_F_null <- glm(survival ~ h,        data = dat_fig5, family = binomial)
+m_F_supp <- glm(survival ~ log_CFU + h, data = dat_fig5, family = binomial)
+
+pred_F <- map_dfr(names(h_levels), function(lbl) {
+  nd <- data.frame(Time = seq(0, 36, length.out = 200), h = h_levels[[lbl]])
+  nd$fit <- plogis(predict(m_F, newdata = nd))
+  nd$bin <- factor(lbl, levels = names(h_levels)); nd
+})
+null_F <- map_dfr(names(h_levels), function(lbl) {
+  nd <- data.frame(Time = c(0, 36), h = h_levels[[lbl]])
+  nd$fit <- plogis(predict(m_F_null, newdata = nd))
+  nd$bin <- factor(lbl, levels = names(h_levels)); nd
+})
+
+p5F <- ggplot() +
+  geom_jitter(data = dat_binned,
+              aes(x = Time, y = survival_jitter, color = h_bin),
+              size = 2, alpha = 0.5, width = 0.3, height = 0) +
+  geom_line(data = null_F, aes(x = Time, y = fit, color = bin),
+            linetype = "dashed", linewidth = 0.7, alpha = 0.6) +
+  geom_line(data = pred_F, aes(x = Time, y = fit, color = bin), linewidth = 1.1) +
+  scale_color_manual(values = pal_h, name = "Health (h)") +
+  scale_y_continuous(breaks = c(0,1), labels = c("Dead","Alive"), limits = c(-0.12, 1.12)) +
+  scale_x_continuous(limits = c(0, 36), breaks = seq(0, 36, 6)) +
+  labs(x = "Time (hrs, t)", y = "Survival (s)") + mytheme +
+  theme(legend.position = c(.7, .35), axis.title.y = element_blank(), axis.text.y = element_blank())
+
+# ----------------------------------------------------------------------------
+# 6. Print test stats for caption
+# ----------------------------------------------------------------------------
+cat("\n=== Figure 5 test statistics ===\n")
+cat("D — t ⊥ h | p (DAG A):\n");   print(summary(m_D)$coefficients["Time", ])
+cat("\nE — h ⊥ S | p (DAG B):\n"); print(summary(m_E)$coefficients["h", ])
+cat("\nF — S ⊥ t | h (DAG C):\n"); print(summary(m_F)$coefficients["Time", ])
+cat("F — S ⊥ p | h (DAG C):\n");   print(summary(m_F_supp)$coefficients["log_CFU", ])
+
+# ----------------------------------------------------------------------------
+# 7. Assemble
+# ----------------------------------------------------------------------------
+design <- "
+ABC
+DEF
+"
+figureS4 <- dag5_A + dag5_B + dag5_C + p5D + p5E + p5F +
+  plot_layout(design = design, heights = c(1, 1)) +
+  plot_annotation(tag_levels = "A") &
+  theme(plot.tag = element_text(face = "bold", size = 14),
+        plot.tag.position = c(0, 1),
+        plot.margin = margin(6, 6, 6, 6))
+
+figureS4
+
+ggsave("figures/figureS4.pdf",  # >>> Supplementary Figure S4 (4-node health DAGs + diagnostics)
+       plot = figureS4, width = 11, height = 6.5, dpi = 300)
+
+# -----------------------------------------------------------------------------
+# Sensitivity analysis: health composite = melanization only (h_mel = 4 - melan.)
+# Reproduces the values reported in the text for the melanization-only health
+# index (s ⊥ t | h_mel ; s ⊥ p | h_mel). Self-contained — uses *_mel object
+# names so it does NOT overwrite the main Figure 5 objects (dat_fig5, m_F, ...).
+# -----------------------------------------------------------------------------
+dat_fig5_mel <- burden_tidy_time %>%
+  filter(!is.na(melanization), !is.na(survival), !is.na(log_CFU)) %>%
+  mutate(h_mel = (4 - melanization))   # (4 - melanization) = raw (4 = healthy); higher = healthier
+
+# DAG C support tests with melanization-only health
+m_F_mel      <- glm(survival ~ Time    + h_mel, data = dat_fig5_mel, family = binomial)
+m_F_supp_mel <- glm(survival ~ log_CFU + h_mel, data = dat_fig5_mel, family = binomial)
+
+cat("\n=== Figure 5 sensitivity: melanization-only health ===\n")
+cat("s \u22A5 t | h_mel  (Time | h_mel):\n");    print(summary(m_F_mel)$coefficients["Time", ])
+cat("s \u22A5 p | h_mel  (log_CFU | h_mel):\n"); print(summary(m_F_supp_mel)$coefficients["log_CFU", ])
+
+# =============================================================================
+# Updated SEM with Health
+# =============================================================================
+
+# Prepare time variables
+burden_tidy_time$time_linear  <- burden_tidy_time$scaled_time
+burden_tidy_time$time_squared <- burden_tidy_time$scaled_time^2
+
+# SEM Model 5: t → p → h → S with t → h (supported model)
+model_sem <- '
+  # Pathogen growth
+  scaled_cfu ~ t1 * time_linear + t2 * time_squared
+  
+  # Health depends on both pathogen AND time (hysteresis)
+  scaled_health_combined ~ a * scaled_cfu + h1 * time_linear
+
+  # Survival depends on health (complete mediation)
+  survival ~ b * scaled_health_combined
+
+  # Defined parameters
+  indirect_p := a * b       # Indirect effect of p through h
+  indirect_t := h1 * b      # Indirect effect of t through h (not via p)
+'
+
+set.seed(6789)
+fit_sem <- bsem(model_sem, 
+                data = burden_tidy_time, 
+                burnin = 1000, 
+                sample = 5000, 
+                n.chains = 4)
+
+summary(fit_sem)
+print(fitMeasures(fit_sem, c("dic", "ppp")))
+
+# Check convergence
+print(blavInspect(fit_sem, "psrf"))
+
+# =============================================================================
+# Compare with alternative models
+# =============================================================================
+
+# Alternative: No health mediation (for comparison)
+model_no_h <- '
+  scaled_cfu ~ t1 * time_linear + t2 * time_squared
+  survival ~ c * scaled_cfu + d * time_linear
+'
+
+fit_no_h <- bsem(model_no_h, 
+                 data = burden_tidy_time, 
+                 burnin = 1000, 
+                 sample = 5000, 
+                 n.chains = 4)
+
+print(fitMeasures(fit_sem, c("dic", "ppp")))
+print(fitMeasures(fit_no_h, c("dic", "ppp")))
+
+dic_diff <- fitMeasures(fit_no_h, "dic") - fitMeasures(fit_sem, "dic")
+cat("\nΔDIC (no_h - with_h):", round(dic_diff, 1), "\n")
+
+# =============================================================================
+# Extract and Plot Effects
+# =============================================================================
+
+sem_summary <- summary(fit_sem)
+effects_df_raw <- as.data.frame(sem_summary)
+
+semPaths(fit_sem,
+         what = "est",
+         layout = "tree2",
+         edge.label.cex = 1.2,
+         edge.width = 2,
+         sizeMan = 10,
+         edge.color = "grey20",
+         fade = T,
+         curvePivot = TRUE,
+         label.prop = 1,
+         intercepts = FALSE,
+         nCharNodes = 0,
+         residuals = TRUE,
+         nodeLabels = c("Pathogen\nload", "Host\nhealth", "Survival", "Time", "time^2"))
+
+# Convert to dataframe - row names become first column with empty name
+
+sem_summary <- summary(fit_sem)
+effects_df_raw <- as.data.frame(sem_summary)
+
+# Extract effects from new SEM output
+effects_df <- data.frame(
+  path = c(
+    "italic(t) %->% italic(p)~(t[1])",
+    "italic(t)^2 %->% italic(p)~(t[2])",
+    "italic(p) %->% italic(h)~(a)",
+    "italic(t) %->% italic(h)~(h[1])",
+    "italic(h) %->% italic(s)~(b)",
+    "Indirect:~italic(p) %->% italic(h) %->% italic(s)",
+    "Indirect:~italic(t) %->% italic(h) %->% italic(s)"
+  ),
+  estimate = c(
+    effects_df_raw["X", "Estimate"],
+    effects_df_raw["X.1", "Estimate"],
+    effects_df_raw["X.2", "Estimate"],
+    effects_df_raw["X.3", "Estimate"],
+    effects_df_raw["X.4", "Estimate"],
+    effects_df_raw["X.11", "Estimate"],
+    effects_df_raw["X.12", "Estimate"]
+  ),
+  lower = c(
+    effects_df_raw["X", "pi.lower"],
+    effects_df_raw["X.1", "pi.lower"],
+    effects_df_raw["X.2", "pi.lower"],
+    effects_df_raw["X.3", "pi.lower"],
+    effects_df_raw["X.4", "pi.lower"],
+    effects_df_raw["X.11", "pi.lower"],
+    effects_df_raw["X.12", "pi.lower"]
+  ),
+  upper = c(
+    effects_df_raw["X", "pi.upper"],
+    effects_df_raw["X.1", "pi.upper"],
+    effects_df_raw["X.2", "pi.upper"],
+    effects_df_raw["X.3", "pi.upper"],
+    effects_df_raw["X.4", "pi.upper"],
+    effects_df_raw["X.11", "pi.upper"],
+    effects_df_raw["X.12", "pi.upper"]
+  )
+) %>%
+  mutate(path = factor(path, levels = rev(path)))
+
+# Convert to numeric
+effects_df$estimate <- as.numeric(effects_df$estimate)
+effects_df$lower    <- as.numeric(effects_df$lower)
+effects_df$upper    <- as.numeric(effects_df$upper)
+
+print(effects_df)
+
+#==============================================================================
+# FIGURE intermediate: SEM results — supported DAG + effect sizes
+# Panel A: Supported 4-node DAG (Model 5: t→p→h→S, t→h)
+# Panel B: Effect sizes plot
+# semPaths diagram can be generated separately or replaced by the DAG
+#==============================================================================
+
+# Panel A: The winning DAG (already exists as dag_5)
+dag_sem <- draw_dag_panel_4node(
+  edges = c("t_p", "t_h", "p_h", "h_s"),
+  title = "Supported model",
+  subtitles = character(0)
+) +
+  theme(
+    plot.background  = element_rect(fill = "white", color = "grey70", linewidth = 0.4),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.title = element_text(hjust = 0.5, size = 14, face = "italic")
+  )
+
+# Panel B: Effect sizes (already exists as effect_plot)
+# Recreate to ensure clean state:
+
+effects_df$estimate <- as.numeric(effects_df$estimate)
+effects_df$lower    <- as.numeric(effects_df$lower)
+effects_df$upper    <- as.numeric(effects_df$upper)
+
+p5B <- ggplot(effects_df, aes(y = path, x = estimate)) +
+  geom_col(fill = "grey70", color = "black", width = 0.6) +
+  geom_vline(xintercept = 0, linetype = "dashed", linewidth = 0.8) +
+  geom_errorbar(aes(xmin = lower, xmax = upper), width = 0.2, linewidth = 0.8) +
+  labs(y = "", x = "Standardized effect sizes") +
+  mytheme +
+  theme(
+    axis.text.y = element_text(hjust = 1, size = 16),
+    axis.text.x = element_text(size = 16),
+    axis.title.x = element_text(size = 16),
+    panel.grid.major.x = element_line(color = "grey90", linewidth = 0.3)
+  )+
+  scale_y_discrete(labels = function(x) parse(text = x))
+
+# =============================================================================
+# Figure 5: SEM path effects from POSTERIOR DRAWS (single source of truth)
+# Model:  scaled_cfu ~ t1*time_linear + t2*time_squared
+#         scaled_health_combined ~ a*scaled_cfu + h1*time_linear
+#         survival ~ b*scaled_health_combined
+#         indirect_p := a*b ; indirect_t := h1*b
+#
+# Inputs are pre-scaled, so raw coefficients ARE the standardized effects.
+# Everything (point estimate, CrI, density) comes from the draws -> no
+# dependence on parameterEstimates() column names.
+# =============================================================================
+
+path_labels <- c(
+  t1         = "italic(t) %->% italic(p)~(t[1])",
+  t2         = "italic(t)^2 %->% italic(p)~(t[2])",
+  a          = "italic(p) %->% italic(h)~(a)",
+  h1         = "italic(t) %->% italic(h)~(h[1])",
+  b          = "italic(h) %->% italic(s)~(b)",
+  indirect_p = "Indirect:~italic(p) %->% italic(h) %->% italic(s)",
+  indirect_t = "Indirect:~italic(t) %->% italic(h) %->% italic(s)"
+)
+path_order <- rev(unname(path_labels))
+
+# ---- Posterior draws of the free parameters --------------------------------
+# Combine chains by iterating the list (avoids coda's mcmc.list reconstruction,
+# which errors when blavaan returns chains not classed as `mcmc`).
+mc <- blavInspect(fit_sem, "mcmc")
+if (coda::is.mcmc(mc)) mc <- list(mc)            # single-chain safety
+draws <- do.call(rbind, lapply(mc, as.matrix))
+
+# blavaan named the columns with your labels, and already computed the
+# indirect effects as draws -> just select the seven of interest.
+keep <- c("t1", "t2", "a", "h1", "b", "indirect_p", "indirect_t")
+post <- as.data.frame(draws[, keep, drop = FALSE])
+
+plot_df <- post %>%
+  pivot_longer(everything(), names_to = "label", values_to = "value") %>%
+  mutate(path = factor(path_labels[label], levels = path_order)) %>%
+  group_by(path) %>% mutate(med = median(value)) %>% ungroup() %>%
+  mutate(effect = case_when(
+    abs(med) < 0.05 ~ "negligible",
+    med > 0         ~ "increases downstream",   # h -> s is positive
+    TRUE            ~ "decreases downstream"
+  ))
+
+# ---- Point estimate + 95% CrI table (replaces the broken effects_df) -------
+effects_df <- plot_df %>%
+  group_by(label, path) %>%
+  summarise(estimate = median(value),
+            lower    = quantile(value, 0.025),
+            upper    = quantile(value, 0.975),
+            .groups  = "drop") %>%
+  mutate(path = factor(path, levels = path_order)) %>%
+  arrange(path)
+print(effects_df)        # real numbers now
+
+# ---- Half-eye posterior figure ---------------------------------------------
+pal <- c("increases downstream" = "#19798b",
+         "decreases downstream" = "#b80422",
+         "negligible"           = "#888780")
+
+p <- ggplot(plot_df, aes(x = value, y = path, fill = effect, colour = effect)) +
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "grey60", linewidth = 0.4) +
+  stat_halfeye(.width = c(0.66, 0.95), point_interval = "median_qi",
+               slab_alpha = 0.45, normalize = "groups", height = 0.9) +
+  scale_y_discrete(labels = function(l) parse(text = l)) +
+  scale_fill_manual(values = pal, name = NULL) +
+  scale_colour_manual(values = pal, name = NULL) +
+  labs(x = "Effect size (posterior)", y = NULL) +
+  mytheme+
+  theme(legend.position = "top", axis.text.y = element_text(hjust = 0))
+
+figure5 <- p +
+  inset_element(dag_sem,
+                left = 0.7, bottom = 0.02,    # bottom-right corner
+                right = 1.00, top = 0.35,
+                align_to = "panel",
+                on_top = TRUE)
+
+ggsave("figures/figure5.pdf", p, width = 7.5, height = 5.5)  # >>> Manuscript Figure 5 (SEM path effects, posterior draws).
+
+ggsave("figures/figure5_inset.pdf", dag_sem, width = 2.2, height = 2.0)
+# figure5.pdf is assembled manually from these two; not written by this script.
+
+#===============================================================================
+# SUPPLEMENTARY ANALYSIS: Cumulative Burden Estimation
+# Why cumulative measures are problematic in cross-sectional designs
+#===============================================================================
+
+#-------------------------------------------------------------------------------
+# METHOD 1: Integral of fitted logistic (current approach)
+#-------------------------------------------------------------------------------
+
+# Parameters from fitted logistic model
+params_logistic <- coef(logistic_logfit_full)
+K  <- params_logistic["K"]
+p0 <- params_logistic["p0"]
+r  <- params_logistic["r"]
+
+# Analytical integral: ∫₀ᵗ p(τ)dτ for logistic growth
+# Closed form: (K/r) * ln[1 + (p0/(K-p0)) * (e^(rt) - 1)]
+burden_tidy_time <- burden_tidy_time %>%
+  mutate(
+    cum_burden_integral = (K/r) * log1p((p0 / (K - p0)) * expm1(r * Time))
+  )
+
+#-------------------------------------------------------------------------------
+# METHOD 2: Trapezoidal sum of observed data
+#-------------------------------------------------------------------------------
+
+# Calculate population mean CFU at each timepoint
+mean_cfu_by_time <- burden_tidy_time %>%
+  group_by(Time) %>%
+  summarise(mean_cfu = mean(cfu, na.rm = TRUE), .groups = "drop") %>%
+  arrange(Time)
+
+# Trapezoidal integration of observed means
+# For each timepoint, sum area under curve from t=0 to t=T
+trapezoidal_cumsum <- function(times, values) {
+  n <- length(times)
+  if (n == 1) return(0)
+  
+  cumsum_vals <- numeric(n)
+  cumsum_vals[1] <- 0  # At t=0, cumulative = 0
+  
+  for (i in 2:n) {
+    # Trapezoidal rule: (t2-t1) * (y1+y2)/2
+    dt <- times[i] - times[i-1]
+    avg_val <- (values[i] + values[i-1]) / 2
+    cumsum_vals[i] <- cumsum_vals[i-1] + dt * avg_val
+  }
+  return(cumsum_vals)
+}
+
+mean_cfu_by_time <- mean_cfu_by_time %>%
+  mutate(cum_burden_trapezoid = trapezoidal_cumsum(Time, mean_cfu))
+
+# Merge back to individual data (assign population cumulative to each larva)
+burden_tidy_time <- burden_tidy_time %>%
+  left_join(mean_cfu_by_time %>% dplyr::select(Time, cum_burden_trapezoid), by = "Time")
+
+#-------------------------------------------------------------------------------
+# METHOD 3: Simple cumulative sum (cruder approach)
+#-------------------------------------------------------------------------------
+
+# Just sum mean CFU at all preceding timepoints (discrete approximation)
+burden_tidy_time <- burden_tidy_time %>%
+  mutate(
+    cum_burden_discrete = sapply(Time, function(t) {
+      sum(mean_cfu_by_time$mean_cfu[mean_cfu_by_time$Time <= t])
+    })
+  )
+
+#-------------------------------------------------------------------------------
+# COMPARISON: How similar are the three methods?
+#-------------------------------------------------------------------------------
+
+# Correlations
+cor_matrix <- burden_tidy_time %>%
+  dplyr::select(Time, cum_burden_integral, cum_burden_trapezoid, cum_burden_discrete) %>%
+  distinct() %>%
+  cor(use = "complete.obs")
+
+cat("\n=== Correlation matrix: Time vs Cumulative Burden Measures ===\n")
+print(round(cor_matrix, 4))
+
+# The key insight: ALL cumulative measures are near-perfectly correlated with time
+cat("\nCorrelation with Time:\n")
+
+cat("  Integral method:    r =", round(cor_matrix["Time", "cum_burden_integral"], 4), "\n")
+cat("  Trapezoidal method: r =", round(cor_matrix["Time", "cum_burden_trapezoid"], 4), "\n")
+cat("  Discrete method:    r =", round(cor_matrix["Time", "cum_burden_discrete"], 4), "\n")
+
+#-------------------------------------------------------------------------------
+# FIGURE S2: Comparison of cumulative burden estimation methods
+#-------------------------------------------------------------------------------
+
+# Panel A: All three methods vs time
+comparison_data <- burden_tidy_time %>%
+  dplyr::select(Time, cum_burden_integral, cum_burden_trapezoid, cum_burden_discrete) %>%
+  distinct() %>%
+  pivot_longer(cols = starts_with("cum_burden"), 
+               names_to = "method", 
+               values_to = "cumulative_burden") %>%
+  mutate(method = case_when(
+    method == "cum_burden_integral" ~ "Integral of fitted logistic",
+    method == "cum_burden_trapezoid" ~ "Trapezoidal sum of data",
+    method == "cum_burden_discrete" ~ "Discrete sum of data"
+  ))
+
+pA_supp <- ggplot(comparison_data, aes(x = Time, y = log10(cumulative_burden + 1), 
+                                       color = method, linetype = method)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 2) +
+  scale_color_manual(values = c("#ee9b43", "#19798b", "#b80422")) +
+  labs(x = "Time since infection (h)", 
+       y = expression(log[10](Cumulative~burden)),
+       color = "Method", linetype = "Method") +
+  mytheme +
+  theme(legend.position = c(0.6, 0.25))
+
+# Panel B: Integral vs Trapezoidal (method comparison)
+method_compare <- burden_tidy_time %>%
+  dplyr::select(Time, cum_burden_integral, cum_burden_trapezoid) %>%
+  distinct()
+
+pB_supp <- ggplot(method_compare, aes(x = log10(cum_burden_integral + 1), 
+                                      y = log10(cum_burden_trapezoid + 1))) +
+  geom_point(size = 3) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50") +
+  geom_smooth(method = "lm", se = FALSE, color = "#ee9b43") +
+  labs(x = expression(log[10](Integral~of~fitted~model)),
+       y = expression(log[10](Trapezoidal~sum~of~data))) +
+  annotate("text", x = 5, y = 8, 
+           label = paste0("r = ", round(cor(method_compare$cum_burden_integral, 
+                                            method_compare$cum_burden_trapezoid), 3)),
+           size = 6) +
+  mytheme
+
+# Panel C: THE PROBLEM - Cumulative burden vs Time (near-perfect correlation)
+pC_supp <- ggplot(method_compare, aes(x = Time, y = log10(cum_burden_integral + 1))) +
+  geom_point(size = 3, color = "#ee9b43") +
+  geom_smooth(method = "lm", se = TRUE, color = "black") +
+  labs(x = "Time since infection (hrs)",
+       y = expression(log[10](Cumulative~burden))) +
+  annotate("text", x = 10, y = 8, 
+           label = paste0("r = ", round(cor(method_compare$Time, 
+                                            method_compare$cum_burden_integral), 3)),
+           size = 6)+
+  mytheme
+
+# Panel D: Residual variance after accounting for time
+# If cumulative burden adds info beyond time, residuals should correlate with outcomes
+burden_tidy_time <- burden_tidy_time %>%
+  mutate(
+    # Residual cumulative burden after removing time effect
+    cum_burden_resid = residuals(lm(log10(cum_burden_integral + 1) ~ Time, 
+                                    data = burden_tidy_time))
+  )
+
+# Check: does residual cumulative burden predict health?
+m_resid <- lm(scaled_health ~ cum_burden_resid, data = burden_tidy_time)
+summary(m_resid)
+
+pD_supp <- ggplot(burden_tidy_time, aes(x = cum_burden_resid, y = scaled_health)) +
+  geom_point(aes(fill = status), shape = 21, size = 2, alpha = 0.7) +
+  geom_smooth(method = "lm", se = TRUE, color = "black") +
+  scale_fill_manual(values = c("#19798b", "#ee9b43")) +
+  labs(x = "Residual cumulative burden\n(after removing time effect)",
+       y = "Standardized health",
+       fill = "Status") +
+  annotate("text", x = -0.2, y = 1.8, 
+           label = paste0("β = ", round(coef(m_resid)[2], 3), 
+                          ", p = ", round(summary(m_resid)$coefficients[2,4], 3)),
+           size = 6) +
+  mytheme +
+  theme(legend.position = c(0.85, 0.9))
+
+# Combine
+figure_cumulative_supp <- (pA_supp | pB_supp) / (pC_supp | pD_supp) +
+  plot_annotation(tag_levels = "A") &
+  theme(plot.tag = element_text(face = "bold", size = 14))
+
+figure_cumulative_supp
+
+ggsave("figures/figureS2.pdf",  # >>> Supplementary Figure S2 (cumulative-burden methods + collinearity)
+       plot = figure_cumulative_supp, width = 10, height = 9.2, dpi = 300)
+
+#-------------------------------------------------------------------------------
+# STATISTICAL TEST: Does cumulative burden add information beyond time?
+#-------------------------------------------------------------------------------
+
+# Predicting health
+m_time_only <- lm(scaled_health ~ Time, data = burden_tidy_time)
+m_cum_only  <- lm(scaled_health ~ log10(cum_burden_integral + 1), data = burden_tidy_time)
+m_both      <- lm(scaled_health ~ Time + log10(cum_burden_integral + 1), data = burden_tidy_time)
+
+cat("AIC comparison (predicting health):\n")
+print(AIC(m_time_only, m_cum_only, m_both))
+
+cat("\nModel with both predictors:\n")
+print(summary(m_both))
+
+# Key result: In the combined model, one predictor becomes non-significant
+# because they're colinear
+
+# Variance Inflation Factor
+library(car)
+cat("\nVariance Inflation Factor (VIF) in combined model:\n")
+print(vif(m_both))
+
+#-------------------------------------------------------------------------------
+# WHY THIS MATTERS FOR SEM
+#-------------------------------------------------------------------------------
+
+cat("\n=== Implications for Structural Equation Modeling ===\n\n")
+
+cat("The near-perfect correlation between cumulative burden and time creates problems:\n\n")
+
+cat("1. COLLINEARITY: When both are in a model, estimates become unstable\n")
+cat("   VIF > 10 indicates severe collinearity\n\n")
+
+cat("2. IDENTIFIABILITY: SEM cannot distinguish paths like:\n")
+cat("   t → Σp → h → S  vs.  t → h → S (with Σp as byproduct)\n")
+cat("   because Σp ≈ f(t) in cross-sectional data\n\n")
+
+cat("3. OVERFITTING: Models with Σp achieve low DIC by capturing\n")
+cat("   time-correlated noise, leading to poor predictive performance (PPP < 0.01)\n\n")
+
+cat("4. SOLUTION: The antibiotic intervention experiment breaks this collinearity\n")
+cat("   by manipulating cumulative exposure while holding assessment time constant.\n")
+cat("   Early vs late treatment creates larvae with DIFFERENT cumulative exposures\
+")
+cat("   assessed at the SAME time (24h), allowing causal identification.\n")
+
+#-------------------------------------------------------------------------------
+# SUMMARY TABLE FOR SUPPLEMENTARY
+#-------------------------------------------------------------------------------
+
+summary_table <- tibble(
+  Method = c("Integral of fitted logistic", 
+             "Trapezoidal sum of observed means",
+             "Discrete sum of observed means"),
+  Formula = c("(K/r) × ln[1 + (p₀/(K-p₀)) × (e^(rt) - 1)]",
+              "Σᵢ (tᵢ - tᵢ₋₁) × (p̄ᵢ + p̄ᵢ₋₁)/2",
+              "Σᵢ p̄ᵢ for all tᵢ ≤ t"),
+  `Correlation with Time` = c(
+    round(cor_matrix["Time", "cum_burden_integral"], 3),
+    round(cor_matrix["Time", "cum_burden_trapezoid"], 3),
+    round(cor_matrix["Time", "cum_burden_discrete"], 3)
+  ),
+  Pros = c("Smooth, uses all data, mechanistic",
+           "Model-free, captures data variation",
+           "Simplest, no interpolation"),
+  Cons = c("Model-dependent, near-deterministic with t",
+           "Sensitive to sampling density",
+           "Crude, ignores time intervals")
+)
+
+print(summary_table)
+
+
 #===============================================================================
 ### ANTIBIOTIC TREATMENT ###
-# FIGURE 5# 
+# FIGURE 6 
 #===============================================================================
 
 ab_data   <- read.table("data/bacterial_burden_ab.csv", header = T, sep = ",", dec =".")
@@ -1549,21 +2918,14 @@ pD_cfu <- ggplot(dose, aes(hr_inj_to_treat, log_CFU)) +
   theme(legend.position = "none")
 
 # --- Assemble (collect the shared control legend at the bottom) --------------
-#figure8 <- (pD_surv | pD_health | pD_cfu) +
-#  plot_annotation(tag_levels = "A") +
-#  plot_layout(guides = "collect") &
-#  theme(plot.tag = element_text(face = "bold", size = 14),
-#        legend.position = "bottom")
-
-figure5 <- (p7A | p7B | p7C) / (pD_surv | pD_health | pD_cfu) +
+figure6 <- (p7A | p7B | p7C) / (pD_surv | pD_health | pD_cfu) +
   plot_layout(widths = c(1, 1.5)) +   # bottom row 1.5× the top — tune to taste
   plot_annotation(tag_levels = "A") &
   theme(plot.tag = element_text(face = "bold", size = 14))
 
 
-ggsave("figures/figure5.pdf",  # >>> Manuscript Figure 5 (antibiotic intervention, 6 panels).
-       plot = figure5, width = 12, height = 7, units = "in", dpi = 300)
-
+ggsave("figures/figure6.pdf",  # >>> Manuscript Figure 6 (antibiotic intervention, 6 panels).
+       plot = figure6, width = 12, height = 7, units = "in", dpi = 300)
 
 
 # Survival stats
@@ -1721,941 +3083,8 @@ m_health_sigma <- lm(Total_health ~ Sigma_p_pre, data = dose)
 AIC(m_surv_dose, m_surv_sigma)            # time vs Σp as predictor
 AIC(m_health_dose, m_health_sigma)
 
-
-# =============================================================================
-# Causal Analysis Figures for Galleria Paper
-# =============================================================================
-
-# =============================================================================
-# Three-node DAG panels function
-# =============================================================================
-
-# Custom function to draw DAG panel
-draw_dag_panel <- function(edges, title, subtitle) {
-  
-  
-  # Node positions (matching uploaded image layout)
-  nodes <- data.frame(
-    name = c("t", "p", "s"),
-    x = c(0, 1, 2),
-    y = c(0, 1, 0),
-    label = c("italic(t)", "italic(p)", "italic(s)")
-  )
-  
-  # Create edge dataframe based on which edges are present
-  edge_df <- data.frame()
-  
-  if ("t_p" %in% edges) {
-    edge_df <- rbind(edge_df, data.frame(
-      x = 0, y = 0, xend = 1, yend = 1, curve = 0
-    ))
-  }
-  if ("p_s" %in% edges) {
-    edge_df <- rbind(edge_df, data.frame(
-      x = 1, y = 1, xend = 2, yend = 0, curve = 0
-    ))
-  }
-  if ("t_s" %in% edges) {
-    edge_df <- rbind(edge_df, data.frame(
-      x = 0, y = 0, xend = 2, yend = 0, curve = 0
-    ))
-  }
-  
-  # Box dimensions
-  box_w <- 0.35
-  box_h <- 0.25
-  
-  # Create node rectangles
-  node_rects <- nodes %>%
-    mutate(
-      xmin = x - box_w/2,
-      xmax = x + box_w/2,
-      ymin = y - box_h/2,
-      ymax = y + box_h/2
-    )
-  
-  # Adjust arrow endpoints to stop at box edges
-  adjust_arrow <- function(x1, y1, x2, y2, box_w, box_h) {
-    # Direction vector
-    dx <- x2 - x1
-    dy <- y2 - y1
-    len <- sqrt(dx^2 + dy^2)
-    
-    # Unit vector
-    ux <- dx / len
-    uy <- dy / len
-    
-    # Adjust start point (move away from center of start node)
-    # Find intersection with box edge
-    if (abs(ux) > 0.01) {
-      t_x <- (box_w/2) / abs(ux)
-    } else {
-      t_x <- Inf
-    }
-    if (abs(uy) > 0.01) {
-      t_y <- (box_h/2) / abs(uy)
-    } else {
-      t_y <- Inf
-    }
-    t_start <- min(t_x, t_y)
-    
-    x1_adj <- x1 + ux * t_start
-    y1_adj <- y1 + uy * t_start
-    
-    # Adjust end point (stop before center of end node)
-    x2_adj <- x2 - ux * t_start
-    y2_adj <- y2 - uy * t_start
-    
-    return(c(x1_adj, y1_adj, x2_adj, y2_adj))
-  }
-  
-  # Adjust all edges
-  if (nrow(edge_df) > 0) {
-    edge_df_adj <- edge_df %>%
-      rowwise() %>%
-      mutate(
-        adj = list(adjust_arrow(x, y, xend, yend, box_w, box_h)),
-        x_adj = adj[1],
-        y_adj = adj[2],
-        xend_adj = adj[3],
-        yend_adj = adj[4]
-      ) %>%
-      ungroup()
-  }
-  
-  # Build plot
-  p <- ggplot() +
-    # Draw boxes
-    geom_rect(data = node_rects,
-              aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-              fill = "white", color = "#19798b", linewidth = 0.7) +
-    # Draw arrows
-    {if (nrow(edge_df) > 0) 
-      geom_segment(data = edge_df_adj,
-                   aes(x = x_adj, y = y_adj, xend = xend_adj, yend = yend_adj),
-                   arrow = arrow(length = unit(0.15, "inches"), type = "closed"),
-                   color = "#19798b", linewidth = 0.7)
-    } +
-    # Draw node labels
-    geom_text(data = nodes, aes(x = x, y = y, label = label),
-              parse = TRUE, size = 7, color = "black") +
-    # Add subtitle (conditional independence statement)
-    annotate("text", x = 1, y = -0.5, label = subtitle, 
-             size = 7, color = "black", parse = T) +
-    # Styling
-    coord_fixed(ratio = 1, xlim = c(-0.5, 2.5), ylim = c(-0.7, 1.4)) +
-    theme_void() +
-    ggtitle(title) +
-    theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"))
-  
-  return(p)
-}
-
-#===============================================================================
-# Four-node DAG panels function
-#===============================================================================
-
-draw_dag_panel_4node <- function(edges, title, subtitles, dashed_edges = NULL) {
-  
-  nodes <- data.frame(
-    name = c("t", "p", "h", "s"),
-    x = c(0, 1, 1, 2),
-    y = c(0.5, 1.2, -0.2, 0.5),
-    label = c("italic(t)", "italic(p)", "italic(h)", "italic(s)")
-  )
-  
-  edge_list <- list(
-    "t_p" = c(0, 0.5, 1, 1.2),
-    "t_h" = c(0, 0.5, 1, -0.2),
-    "t_s" = c(0, 0.5, 2, 0.5),
-    "p_h" = c(1, 1.2, 1, -0.2),
-    "p_s" = c(1, 1.2, 2, 0.5),
-    "h_s" = c(1, -0.2, 2, 0.5),
-    "h_p" = c(1, -0.2, 1, 1.2)
-  )
-  
-  box_w <- 0.35; box_h <- 0.25
-  
-  node_rects <- nodes %>%
-    mutate(xmin = x - box_w/2, xmax = x + box_w/2,
-           ymin = y - box_h/2, ymax = y + box_h/2)
-  
-  adjust_arrow <- function(x1, y1, x2, y2, box_w, box_h) {
-    dx <- x2 - x1; dy <- y2 - y1; len <- sqrt(dx^2 + dy^2)
-    if (len == 0) return(c(x1, y1, x2, y2))
-    ux <- dx / len; uy <- dy / len
-    t_x <- if (abs(ux) > 0.01) (box_w/2)/abs(ux) else Inf
-    t_y <- if (abs(uy) > 0.01) (box_h/2)/abs(uy) else Inf
-    t_start <- min(t_x, t_y)
-    c(x1 + ux*t_start, y1 + uy*t_start, x2 - ux*t_start, y2 - uy*t_start)
-  }
-  
-  # Helper: build adjusted edge df from a vector of edge codes
-  build_edges <- function(edge_codes) {
-    df <- data.frame()
-    for (e in edge_codes) {
-      if (e %in% names(edge_list)) {
-        co <- edge_list[[e]]
-        df <- rbind(df, data.frame(x = co[1], y = co[2], xend = co[3], yend = co[4]))
-      }
-    }
-    if (nrow(df) > 0) {
-      df <- df %>% rowwise() %>%
-        mutate(adj = list(adjust_arrow(x, y, xend, yend, box_w, box_h)),
-               x_adj = adj[1], y_adj = adj[2], xend_adj = adj[3], yend_adj = adj[4]) %>%
-        ungroup()
-    }
-    df
-  }
-  
-  edge_df_adj   <- build_edges(edges)
-  dashed_df_adj <- build_edges(dashed_edges)
-  
-  p <- ggplot() +
-    geom_rect(data = node_rects,
-              aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-              fill = "white", color = "#19798b", linewidth = 0.5) +
-    # solid edges
-    {if (nrow(edge_df_adj) > 0)
-      geom_segment(data = edge_df_adj,
-                   aes(x = x_adj, y = y_adj, xend = xend_adj, yend = yend_adj),
-                   arrow = arrow(length = unit(0.12, "inches"), type = "closed"),
-                   color = "#19798b", linewidth = 0.5)} +
-    # grey dashed "also-rejected variant" edges
-    {if (nrow(dashed_df_adj) > 0)
-      geom_segment(data = dashed_df_adj,
-                   aes(x = x_adj, y = y_adj, xend = xend_adj, yend = yend_adj),
-                   arrow = arrow(length = unit(0.12, "inches"), type = "closed"),
-                   color = "grey60", linetype = "dashed", linewidth = 0.5)} +
-    geom_text(data = nodes, aes(x = x, y = y, label = label),
-              parse = TRUE, size = 5, color = "black") +
-    coord_fixed(ratio = 1, xlim = c(-0.5, 2.5), ylim = c(-1.1, 1.7)) +
-    theme_void() +
-    ggtitle(title) +
-    theme(plot.title = element_text(hjust = 0.5, size = 11, face = "italic"))
-  
-  for (i in seq_along(subtitles)) {
-    p <- p + annotate("text", x = 1, y = -0.65 - (i-1)*0.25,
-                      label = subtitles[i], size = 4, color = "black", parse = TRUE)
-  }
-  p
-}
-
-
-# Show correlation between Activity and Melanization.
-# Correlate them in the SAME (health) orientation they enter the composite:
-# activity (higher = healthier) and (4 - melanization) = raw melanization
-# (higher = healthier). Using the stored severity `melanization` here would only
-# flip the SIGN of r (magnitude and p-value are identical) and report a negative
-# r that contradicts the "both measure health, so sum them" justification.
-melan_health <- 4 - burden_tidy_time$melanization      # raw melanization, 4 = healthy
-cor_AM <- cor(burden_tidy_time$activity, melan_health,
-              use = "complete.obs")
-cat("Correlation between Activity and Melanization (both health-oriented):", round(cor_AM, 3), "\n")
-
-# Test correlation significance
-cor_test <- cor.test(burden_tidy_time$activity, melan_health)
-cat("Correlation p-value:", cor_test$p.value, "\n\n") 
-
-# Create combined health metric
-
-burden_tidy_time <- burden_tidy_time %>%
-  mutate(
-    # Combined health = activity + (4 - melanization).
-    # `melanization` is the severity form (4 - raw), so (4 - melanization)
-    # recovers the raw health-oriented value (4 = healthy). Higher = healthier.
-    health_combined = activity + (4 - melanization),
-    scaled_health_combined = scale(health_combined)[,1]
-  )
-
-#==============================================================================
-# Causal model formalization (dagitty)
-#------------------------------------------------------------------------------
-# Encodes the candidate DAGs underlying Figures 3 and 5 and prints the testable
-# conditional independencies derived by d-separation. These are exactly the
-# implications tested by regression downstream:
-#   Fig 3: m_cond            (t -> p -> s implies t _||_ s | p ; etc.)
-#   Fig 5: m_D, m_E, m_F, m_F_supp
-# Reference: Textor et al. 2016 (dagitty). dagitty is loaded above.
-#==============================================================================
-
-# --- Three-node candidate models (Figure 3: t, p, s) ---
-dagi3_mediation <- dagitty("dag { t -> p -> s }")            # 3A: pure pathogen mediation
-dagi3_no_med    <- dagitty("dag { t -> p ; t -> s }")        # 3B: no pathogen mediation
-dagi3_multipath <- dagitty("dag { t -> p -> s ; t -> s }")   # 3C: multi-path (supported)
-
-cat("\n=== Implied conditional independencies: 3-node models (Figure 3) ===\n")
-cat("\n3A  t -> p -> s  (pure pathogen mediation):\n")
-print(impliedConditionalIndependencies(dagi3_mediation))   # expect: t _||_ s | p
-cat("\n3B  t -> p ; t -> s  (no pathogen mediation):\n")
-print(impliedConditionalIndependencies(dagi3_no_med))      # expect: p _||_ s | t
-cat("\n3C  t -> p -> s ; t -> s  (multi-path, supported):\n")
-print(impliedConditionalIndependencies(dagi3_multipath))   # saturated: no implications
-
-# --- Four-node candidate models (Figure 5: t, p, h, s) ---
-dagi4_pmed_health <- dagitty("dag { t -> p -> h -> s }")                  # 5A: pathogen-mediated health
-dagi4_collapse    <- dagitty("dag { t -> h -> p -> s }")                  # 5B: immune collapse
-dagi4_bottleneck  <- dagitty("dag { t -> p ; t -> h ; p -> h ; h -> s }") # 5C: health bottleneck (supported)
-
-cat("\n=== Implied conditional independencies: 4-node models (Figure 5) ===\n")
-cat("\n5A  t -> p -> h -> s  (pathogen-mediated health):\n")
-print(impliedConditionalIndependencies(dagi4_pmed_health))  # includes t _||_ h | p  (Fig 5D)
-cat("\n5B  t -> h -> p -> s  (immune collapse):\n")
-print(impliedConditionalIndependencies(dagi4_collapse))     # includes h _||_ s | p  (Fig 5E)
-cat("\n5C  t -> p ; t -> h ; p -> h ; h -> s  (supported):\n")
-print(impliedConditionalIndependencies(dagi4_bottleneck))   # s _||_ t | h and s _||_ p | h  (Fig 5F)
-
-#==============================================================================
-# FIGURE S3: 3-node DAGs + diagnostic  plots
-# Panels A-C: DAGs for alternative causal models (t,p,S)
-# Panels D-E: Diagnostic plots falsifying models A and B
-#==============================================================================
-
-# --- DAG panels ---
-
-dag_A <- draw_dag_panel(
-  edges = c("t_p", "p_s"),
-  title = "",
-  subtitle = "italic(t)~symbol('\\136')~italic(s)~'|'~italic(p)"
-)
-
-dag_B <- draw_dag_panel(
-  edges = c("t_p", "t_s"),
-  title = "",
-  subtitle = "italic(p)~symbol('\\136')~italic(s)~'|'~italic(t)"
-)
-
-dag_C <- draw_dag_panel(
-  edges = c("t_p", "p_s", "t_s"),
-  title = "",
-  subtitle = "Saturated"
-)
-
-# This is the final figure 3
-
-# ----------------------------------------------------------------------------
-# Data prep
-# ----------------------------------------------------------------------------
-dat_fig3 <- burden_tidy %>%
-  filter(Time < 37, !is.na(status), !is.na(log_CFU)) %>%
-  mutate(
-    alive    = as.integer(status == "Alive"),
-    cfu_bin  = cut(log_CFU,
-                   breaks = quantile(log_CFU, c(0, 1/3, 2/3, 1), na.rm = TRUE),
-                   labels = c("Low", "Medium", "High"),
-                   include.lowest = TRUE),
-    time_bin = cut(Time,
-                   breaks = c(-0.01, 12, 24, 48),
-                   labels = c("0–12h", "12–24h", "24–48h"))
-  )
-
-
-# ----------------------------------------------------------------------------
-# Single additive logistic GLM — matches the test you report (β_Time, β_logCFU)
-# ----------------------------------------------------------------------------
-m_cond <- glm(alive ~ Time + log_CFU, data = dat_fig3, family = binomial)
-summary(m_cond)  # β_Time and β_logCFU are your reported test statistics
-
-# Illustrative levels of the conditioning variable
-cfu_levels  <- quantile(dat_fig3$log_CFU, c(0.15, 0.5, 0.85), na.rm = TRUE)
-time_levels <- c(6, 18, 30)
-names(cfu_levels)  <- c("Low", "Medium", "High")
-names(time_levels) <- c("0–12h", "12–24h", "24–48h")
-
-
-# ─── Null prediction for Panel D: what we'd see if DAG A (t ⊥ S | p) held ───
-# Under DAG A, survival depends only on log_CFU. Fit that null model.
-m_null_D <- glm(survival ~ log_CFU, data = burden_tidy_time, family = binomial)
-
-null_D <- purrr::map_dfr(names(cfu_levels), function(lbl) {
-  nd <- data.frame(Time = c(0, 36), log_CFU = cfu_levels[[lbl]])
-  nd$fit <- plogis(predict(m_null_D, newdata = nd))
-  nd$cfu_bin <- factor(lbl, levels = c("Low", "Medium", "High"))
-  nd
-})
-
-
-# ─── Null prediction for Panel E: what we'd see if DAG B (p ⊥ S | t) held ───
-m_null_E <- glm(survival ~ Time, data = burden_tidy_time, family = binomial)
-
-null_E <- purrr::map_dfr(names(time_levels), function(lbl) {
-  nd <- data.frame(log_CFU = range(burden_tidy_time$log_CFU, na.rm = TRUE),
-                   Time = time_levels[[lbl]])
-  nd$fit <- plogis(predict(m_null_E, newdata = nd))
-  nd$bin <- factor(lbl, levels = names(time_levels))   # <-- self-consistent
-  nd
-})
-
-
-# ----------------------------------------------------------------------------
-# Panel D: P(alive) vs Time at three illustrative CFU levels
-# ----------------------------------------------------------------------------
-pred_D <- purrr::map_dfr(names(cfu_levels), function(lbl) {
-  nd <- data.frame(Time = seq(0, 36, length.out = 200),
-                   log_CFU = cfu_levels[[lbl]])
-  p <- predict(m_cond, newdata = nd, type = "link", se.fit = TRUE)
-  nd$fit <- plogis(p$fit)
-  nd$lwr <- plogis(p$fit - 1.96 * p$se.fit)
-  nd$upr <- plogis(p$fit + 1.96 * p$se.fit)
-  nd$bin <- factor(lbl, levels = c("Low", "Medium", "High"))
-  nd
-})
-
-bin_palette <- c("Low" = "#19798b", "Medium" = "#ee9b43", "High" = "#b80422")
-
-p3D <- ggplot() +
-  geom_jitter(data = dat_fig3,
-              aes(x = Time, y = alive, color = cfu_bin),
-              width = 0.3, height = 0.035, alpha = 0.5, size = 2) +
-  #geom_ribbon(data = pred_D,
-  #            aes(x = Time, ymin = lwr, ymax = upr, fill = bin),
-  #            alpha = 0.12) +
-  geom_line(data = null_D, aes(x = Time, y = fit, color = cfu_bin),
-            linetype = "dashed", linewidth = 1, alpha = 0.6)+
-  geom_line(data = pred_D,
-            aes(x = Time, y = fit, color = bin),
-            linewidth = 1.1) +
-  scale_color_manual(values = bin_palette,
-                     name = expression(log[10](CFU))) +
-  scale_fill_manual(values = bin_palette, guide = "none") +
-  scale_y_continuous(breaks = c(0, 1), labels = c("Dead", "Alive"),
-                     limits = c(-0.12, 1.12)) +
-  scale_x_continuous(limits = c(0, 36), breaks = seq(0, 36, 6)) +
-  labs(x = "Time (hrs, t)", y = "Survival (s)") +
-  mytheme +
-  theme(legend.position = c(0.2, 0.4))
-
-# ----------------------------------------------------------------------------
-# Panel E: P(alive) vs log_CFU at three illustrative time levels
-# ----------------------------------------------------------------------------
-pred_E <- purrr::map_dfr(names(time_levels), function(lbl) {
-  nd <- data.frame(log_CFU = seq(min(dat_fig3$log_CFU),
-                                 max(dat_fig3$log_CFU),
-                                 length.out = 200),
-                   Time = time_levels[[lbl]])
-  p <- predict(m_cond, newdata = nd, type = "link", se.fit = TRUE)
-  nd$fit <- plogis(p$fit)
-  nd$lwr <- plogis(p$fit - 1.96 * p$se.fit)
-  nd$upr <- plogis(p$fit + 1.96 * p$se.fit)
-  nd$bin <- factor(lbl, levels = c("0–12h", "12–24h", "24–48h"))
-  nd
-})
-
-time_palette <- c("0–12h" = "#19798b", "12–24h" = "#ee9b43", "24–48h" = "#b80422")
-
-p3E <- ggplot() +
-  geom_jitter(data = dat_fig3,
-              aes(x = log_CFU, y = alive, color = time_bin),
-              width = 0.08, height = 0.035, alpha = 0.5, size = 2) +
-  #geom_ribbon(data = pred_E,
-  #            aes(x = log_CFU, ymin = lwr, ymax = upr, fill = bin),
-  #            alpha = 0.12) +
-  geom_line(data = null_E, aes(x = log_CFU, y = fit, color = bin),
-            linetype = "dashed", linewidth = 1, alpha = 0.6)+
-  geom_line(data = pred_E,
-            aes(x = log_CFU, y = fit, color = bin),
-            linewidth = 1.1) +
-  scale_color_manual(values = time_palette, name = "Time") +
-  scale_fill_manual(values = time_palette, guide = "none") +
-  scale_y_continuous(breaks = c(0, 1), labels = c("Dead", "Alive"),
-                     limits = c(-0.12, 1.12)) +
-  labs(x = expression(log[10](CFU, p)), y = NULL) +
-  mytheme+
-  theme(legend.position = c(0.2, 0.4),
-        axis.text.y = element_blank())
-
-# Shared display limits for the 3-node DAG panels. These match the coord_fixed()
-# limits set inside draw_dag_panel() so the conditional-independence subtitle
-# (placed at y = -0.5) is not clipped when the panels are composed by patchwork.
-
-dag_xlim <- c(-0.1, 2.3)
-dag_ylim <- c(-0.1, 1.3)
-
-dag_A <- dag_A + coord_cartesian(xlim = dag_xlim, ylim = dag_ylim, clip = "off")
-dag_B <- dag_B + coord_cartesian(xlim = dag_xlim, ylim = dag_ylim, clip = "off")
-dag_C <- dag_C + coord_cartesian(xlim = dag_xlim, ylim = dag_ylim, clip = "off")
-
-
-figureS3 <- (figure_s2 | dag_A | dag_B | dag_C) / (p3D | p3E) +
-  plot_layout(heights = c(1, 2)) +
-  plot_annotation(tag_levels = "A") &
-  theme(plot.tag = element_text(face = "bold", size = 14))
-
-
-ggsave("figures/figureS3.pdf",  # >>> Supplementary Figure S3 (m(p) mapping + 3-node pathogen DAGs + diagnostics); demoted from old main Fig 3
-       plot = figureS3, width = 9.5, height = 7.7, units = "in", dpi = 300)
-
-
-# ============================================================================
-# FIGURE S4: Health-mediated causal analysis
-# A,B,C: DAGs (h mediates p; p mediates h; h as unique bottleneck)
-# D: rejects A via t ⊥ h | p
-# E: rejects B via h ⊥ S | p
-# F: supports C via S ⊥ t | h (and report S ⊥ p | h in caption)
-# ============================================================================
-
-# ----------------------------------------------------------------------------
-# 1. Health composite. `melanization` is the severity form (4 - raw), so
-#    (4 - melanization) recovers raw (4 = healthy); higher h = healthier.
-# ----------------------------------------------------------------------------
-dat_fig5 <- burden_tidy_time %>%
-  filter(!is.na(activity), !is.na(melanization),
-         !is.na(survival), !is.na(log_CFU)) %>%
-  mutate(h = activity + (4 - melanization))   # higher h = healthier
-
-
-dag5_A <- draw_dag_panel_4node(
-  edges = c("t_p", "p_h", "h_s"),
-  dashed_edges = "p_s",           # p → s also-rejected variant
-  title = "", subtitles = "italic(t)~symbol('\\136')~italic(h)~'|'~italic(p)"
-)
-
-dag5_B <- draw_dag_panel_4node(
-  edges = c("t_h", "h_p", "p_s"),
-  dashed_edges = "t_p",           # t → p also-rejected variant
-  title = "", subtitles = "italic(h)~symbol('\\136')~italic(S)~'|'~italic(p)"
-)
-
-dag5_C <- draw_dag_panel_4node(
-  edges = c("t_p", "t_h", "p_h", "h_s"),
-  dashed_edges = NULL,            # survivor, no variant
-  title = "",
-  subtitles = c("italic(s)~symbol('\\136')~italic(t)~'|'~italic(h)",
-                "italic(s)~symbol('\\136')~italic(p)~'|'~italic(h)")
-)
-
-# ----------------------------------------------------------------------------
-# Shared conditioning levels & palettes
-# ----------------------------------------------------------------------------
-cfu_levels <- quantile(dat_fig5$log_CFU, c(0.15, 0.50, 0.85), na.rm = TRUE)
-h_levels   <- quantile(dat_fig5$h,       c(0.15, 0.50, 0.85), na.rm = TRUE)
-names(cfu_levels) <- c("Low", "Medium", "High")
-names(h_levels)   <- c("Low h", "Medium h", "High h")
-
-pal_cfu <- c("Low" = "#19798b", "Medium" = "#ee9b43", "High" = "#b80422")
-pal_h   <- c("Low h" = "#b80422", "Medium h" = "#ee9b43", "High h" = "#19798b") # inverted: high h = good = teal
-
-dat_binned <- dat_fig5 %>%
-  mutate(cfu_bin = cut(log_CFU,
-                       breaks = quantile(log_CFU, c(0,1/3,2/3,1), na.rm = TRUE),
-                       labels = names(cfu_levels), include.lowest = TRUE),
-         h_bin = cut(h,
-                     breaks = c(-0.01, 2.5, 5.5, 7.01),
-                     labels = c("Low h", "Medium h", "High h")))
-
-# ----------------------------------------------------------------------------
-# binned data (with pre-computed jitter)
-# ----------------------------------------------------------------------------
-dat_binned <- dat_fig5 %>%
-  mutate(
-    cfu_bin = cut(log_CFU,
-                  breaks = quantile(log_CFU, c(0, 1/3, 2/3, 1), na.rm = TRUE),
-                  labels = c("Low", "Medium", "High"), include.lowest = TRUE),
-    h_bin   = cut(h,
-                  breaks = c(-0.01, 2.5, 5.5, 7.01),
-                  labels = c("Low h", "Medium h", "High h")),
-    survival_jitter = survival + runif(n(), -0.04, 0.04)   # pre-computed
-  )
-
-cfu_levels <- quantile(dat_fig5$log_CFU, c(0.15, 0.50, 0.85), na.rm = TRUE)
-h_levels   <- c("Low h" = 1, "Medium h" = 4, "High h" = 7)
-names(cfu_levels) <- c("Low", "Medium", "High")
-
-pal_cfu <- c("Low" = "#19798b", "Medium" = "#ee9b43", "High" = "#b80422")
-pal_h   <- c("Low h" = "#b80422", "Medium h" = "#ee9b43", "High h" = "#19798b")
-
-
-# ----------------------------------------------------------------------------
-# 3. Panel D — rejects A: h vs Time at 3 CFU levels
-# ----------------------------------------------------------------------------
-m_D      <- lm(h ~ Time + log_CFU, data = dat_fig5)
-m_D_null <- lm(h ~ log_CFU,        data = dat_fig5)
-
-pred_D <- purrr::map_dfr(names(cfu_levels), function(lbl) {
-  nd <- data.frame(Time = seq(0, 36, length.out = 200), log_CFU = cfu_levels[[lbl]])
-  p <- predict(m_D, newdata = nd, se.fit = TRUE)
-  nd$fit <- p$fit
-  nd$bin <- factor(lbl, levels = names(cfu_levels)); nd
-})
-null_D <- purrr::map_dfr(names(cfu_levels), function(lbl) {
-  nd <- data.frame(Time = c(0, 36), log_CFU = cfu_levels[[lbl]])
-  nd$fit <- predict(m_D_null, newdata = nd)
-  nd$bin <- factor(lbl, levels = names(cfu_levels)); nd
-})
-
-p5D <- ggplot() +
-  geom_jitter(data = dat_binned, aes(x = Time, y = h, color = cfu_bin),
-              size = 2, alpha = 0.5, width = 0.3, height = 0.1) +
-  geom_line(data = null_D, aes(x = Time, y = fit, color = bin),
-            linetype = "dashed", linewidth = 0.7, alpha = 0.6) +
-  geom_line(data = pred_D, aes(x = Time, y = fit, color = bin), linewidth = 1.1) +
-  scale_color_manual(values = pal_cfu, name = expression(log[10](CFU))) +
-  scale_x_continuous(limits = c(0, 36), breaks = seq(0, 36, 6)) +
-  labs(x = "Time (hrs, t)", y = "Health score (h)") + mytheme +
-  theme(legend.position = "none")
-
-# ----------------------------------------------------------------------------
-# 4. Panel E — rejects B: S vs h at 3 CFU levels
-# ----------------------------------------------------------------------------
-m_E      <- glm(survival ~ h + log_CFU, data = dat_fig5, family = binomial)
-m_E_null <- glm(survival ~ log_CFU,     data = dat_fig5, family = binomial)
-
-pred_E <- purrr::map_dfr(names(cfu_levels), function(lbl) {
-  nd <- data.frame(h = seq(min(dat_fig5$h), max(dat_fig5$h), length.out = 200),
-                   log_CFU = cfu_levels[[lbl]])
-  nd$fit <- plogis(predict(m_E, newdata = nd))
-  nd$bin <- factor(lbl, levels = names(cfu_levels)); nd
-})
-null_E <- purrr::map_dfr(names(cfu_levels), function(lbl) {
-  nd <- data.frame(h = range(dat_fig5$h, na.rm = TRUE), log_CFU = cfu_levels[[lbl]])
-  nd$fit <- plogis(predict(m_E_null, newdata = nd))
-  nd$bin <- factor(lbl, levels = names(cfu_levels)); nd
-})
-
-p5E <- ggplot() +
-  geom_jitter(data = dat_binned,
-              aes(x = h, y = survival_jitter, color = cfu_bin),
-              size = 2, alpha = 0.5, width = 0.15, height = 0) +
-  geom_line(data = null_E, aes(x = h, y = fit, color = bin),
-            linetype = "dashed", linewidth = 0.7, alpha = 0.6) +
-  geom_line(data = pred_E, aes(x = h, y = fit, color = bin), linewidth = 1.1) +
-  scale_color_manual(values = pal_cfu, name = expression(log[10](CFU))) +
-  scale_y_continuous(breaks = c(0,1), labels = c("Dead","Alive"), limits = c(-0.12, 1.12)) +
-  labs(x = "Health score (h)", y = "Survival (s)") + mytheme +
-  theme(legend.position = c(.7, .35))
-
-# ----------------------------------------------------------------------------
-# 5. Panel F — supports C: S vs Time at 3 h levels
-# ----------------------------------------------------------------------------
-m_F      <- glm(survival ~ Time + h, data = dat_fig5, family = binomial)
-m_F_null <- glm(survival ~ h,        data = dat_fig5, family = binomial)
-m_F_supp <- glm(survival ~ log_CFU + h, data = dat_fig5, family = binomial)
-
-pred_F <- map_dfr(names(h_levels), function(lbl) {
-  nd <- data.frame(Time = seq(0, 36, length.out = 200), h = h_levels[[lbl]])
-  nd$fit <- plogis(predict(m_F, newdata = nd))
-  nd$bin <- factor(lbl, levels = names(h_levels)); nd
-})
-null_F <- map_dfr(names(h_levels), function(lbl) {
-  nd <- data.frame(Time = c(0, 36), h = h_levels[[lbl]])
-  nd$fit <- plogis(predict(m_F_null, newdata = nd))
-  nd$bin <- factor(lbl, levels = names(h_levels)); nd
-})
-
-p5F <- ggplot() +
-  geom_jitter(data = dat_binned,
-              aes(x = Time, y = survival_jitter, color = h_bin),
-              size = 2, alpha = 0.5, width = 0.3, height = 0) +
-  geom_line(data = null_F, aes(x = Time, y = fit, color = bin),
-            linetype = "dashed", linewidth = 0.7, alpha = 0.6) +
-  geom_line(data = pred_F, aes(x = Time, y = fit, color = bin), linewidth = 1.1) +
-  scale_color_manual(values = pal_h, name = "Health (h)") +
-  scale_y_continuous(breaks = c(0,1), labels = c("Dead","Alive"), limits = c(-0.12, 1.12)) +
-  scale_x_continuous(limits = c(0, 36), breaks = seq(0, 36, 6)) +
-  labs(x = "Time (hrs, t)", y = "Survival (s)") + mytheme +
-  theme(legend.position = c(.7, .35), axis.title.y = element_blank(), axis.text.y = element_blank())
-
-# ----------------------------------------------------------------------------
-# 6. Print test stats for caption
-# ----------------------------------------------------------------------------
-cat("\n=== Figure 5 test statistics ===\n")
-cat("D — t ⊥ h | p (DAG A):\n");   print(summary(m_D)$coefficients["Time", ])
-cat("\nE — h ⊥ S | p (DAG B):\n"); print(summary(m_E)$coefficients["h", ])
-cat("\nF — S ⊥ t | h (DAG C):\n"); print(summary(m_F)$coefficients["Time", ])
-cat("F — S ⊥ p | h (DAG C):\n");   print(summary(m_F_supp)$coefficients["log_CFU", ])
-
-# ----------------------------------------------------------------------------
-# 7. Assemble
-# ----------------------------------------------------------------------------
-design <- "
-ABC
-DEF
-"
-figureS4 <- dag5_A + dag5_B + dag5_C + p5D + p5E + p5F +
-  plot_layout(design = design, heights = c(1, 1)) +
-  plot_annotation(tag_levels = "A") &
-  theme(plot.tag = element_text(face = "bold", size = 14))
-
-figureS4
-
-ggsave("figures/figureS4.pdf",  # >>> Supplementary Figure S4 (4-node health DAGs + diagnostics)
-       plot = figure5, width = 11, height = 6.5, dpi = 300)
-
-# -----------------------------------------------------------------------------
-# Sensitivity analysis: health composite = melanization only (h_mel = 4 - melan.)
-# Reproduces the values reported in the text for the melanization-only health
-# index (s ⊥ t | h_mel ; s ⊥ p | h_mel). Self-contained — uses *_mel object
-# names so it does NOT overwrite the main Figure 5 objects (dat_fig5, m_F, ...).
-# -----------------------------------------------------------------------------
-dat_fig5_mel <- burden_tidy_time %>%
-  filter(!is.na(melanization), !is.na(survival), !is.na(log_CFU)) %>%
-  mutate(h_mel = (4 - melanization))   # (4 - melanization) = raw (4 = healthy); higher = healthier
-
-# DAG C support tests with melanization-only health
-m_F_mel      <- glm(survival ~ Time    + h_mel, data = dat_fig5_mel, family = binomial)
-m_F_supp_mel <- glm(survival ~ log_CFU + h_mel, data = dat_fig5_mel, family = binomial)
-
-cat("\n=== Figure 5 sensitivity: melanization-only health ===\n")
-cat("s \u22A5 t | h_mel  (Time | h_mel):\n");    print(summary(m_F_mel)$coefficients["Time", ])
-cat("s \u22A5 p | h_mel  (log_CFU | h_mel):\n"); print(summary(m_F_supp_mel)$coefficients["log_CFU", ])
-
-# =============================================================================
-# Updated SEM with Health
-# =============================================================================
-
-# Prepare time variables
-burden_tidy_time$time_linear  <- burden_tidy_time$scaled_time
-burden_tidy_time$time_squared <- burden_tidy_time$scaled_time^2
-
-# SEM Model 5: t → p → h → S with t → h (supported model)
-model_sem <- '
-  # Pathogen growth
-  scaled_cfu ~ t1 * time_linear + t2 * time_squared
-  
-  # Health depends on both pathogen AND time (hysteresis)
-  scaled_health_combined ~ a * scaled_cfu + h1 * time_linear
-
-  # Survival depends on health (complete mediation)
-  survival ~ b * scaled_health_combined
-
-  # Defined parameters
-  indirect_p := a * b       # Indirect effect of p through h
-  indirect_t := h1 * b      # Indirect effect of t through h (not via p)
-'
-
-set.seed(6789)
-fit_sem <- bsem(model_sem, 
-                data = burden_tidy_time, 
-                burnin = 1000, 
-                sample = 5000, 
-                n.chains = 4)
-
-summary(fit_sem)
-print(fitMeasures(fit_sem, c("dic", "ppp")))
-
-# Check convergence
-print(blavInspect(fit_sem, "psrf"))
-
-# =============================================================================
-# Compare with alternative models
-# =============================================================================
-
-# Alternative: No health mediation (for comparison)
-model_no_h <- '
-  scaled_cfu ~ t1 * time_linear + t2 * time_squared
-  survival ~ c * scaled_cfu + d * time_linear
-'
-
-fit_no_h <- bsem(model_no_h, 
-                 data = burden_tidy_time, 
-                 burnin = 1000, 
-                 sample = 5000, 
-                 n.chains = 4)
-
-print(fitMeasures(fit_sem, c("dic", "ppp")))
-print(fitMeasures(fit_no_h, c("dic", "ppp")))
-
-dic_diff <- fitMeasures(fit_no_h, "dic") - fitMeasures(fit_sem, "dic")
-cat("\nΔDIC (no_h - with_h):", round(dic_diff, 1), "\n")
-
-# =============================================================================
-# Extract and Plot Effects
-# =============================================================================
-
-sem_summary <- summary(fit_sem)
-effects_df_raw <- as.data.frame(sem_summary)
-
-semPaths(fit_sem,
-         what = "est",
-         layout = "tree2",
-         edge.label.cex = 1.2,
-         edge.width = 2,
-         sizeMan = 10,
-         edge.color = "grey20",
-         fade = T,
-         curvePivot = TRUE,
-         label.prop = 1,
-         intercepts = FALSE,
-         nCharNodes = 0,
-         residuals = TRUE,
-         nodeLabels = c("Pathogen\nload", "Host\nhealth", "Survival", "Time", "time^2"))
-
-# Convert to dataframe - row names become first column with empty name
-
-sem_summary <- summary(fit_sem)
-effects_df_raw <- as.data.frame(sem_summary)
-
-# Extract effects from new SEM output
-effects_df <- data.frame(
-  path = c(
-    "italic(t) %->% italic(p)~(t[1])",
-    "italic(t)^2 %->% italic(p)~(t[2])",
-    "italic(p) %->% italic(h)~(a)",
-    "italic(t) %->% italic(h)~(h[1])",
-    "italic(h) %->% italic(s)~(b)",
-    "Indirect:~italic(p) %->% italic(h) %->% italic(s)",
-    "Indirect:~italic(t) %->% italic(h) %->% italic(s)"
-  ),
-  estimate = c(
-    effects_df_raw["X", "Estimate"],
-    effects_df_raw["X.1", "Estimate"],
-    effects_df_raw["X.2", "Estimate"],
-    effects_df_raw["X.3", "Estimate"],
-    effects_df_raw["X.4", "Estimate"],
-    effects_df_raw["X.11", "Estimate"],
-    effects_df_raw["X.12", "Estimate"]
-  ),
-  lower = c(
-    effects_df_raw["X", "pi.lower"],
-    effects_df_raw["X.1", "pi.lower"],
-    effects_df_raw["X.2", "pi.lower"],
-    effects_df_raw["X.3", "pi.lower"],
-    effects_df_raw["X.4", "pi.lower"],
-    effects_df_raw["X.11", "pi.lower"],
-    effects_df_raw["X.12", "pi.lower"]
-  ),
-  upper = c(
-    effects_df_raw["X", "pi.upper"],
-    effects_df_raw["X.1", "pi.upper"],
-    effects_df_raw["X.2", "pi.upper"],
-    effects_df_raw["X.3", "pi.upper"],
-    effects_df_raw["X.4", "pi.upper"],
-    effects_df_raw["X.11", "pi.upper"],
-    effects_df_raw["X.12", "pi.upper"]
-  )
-) %>%
-  mutate(path = factor(path, levels = rev(path)))
-
-# Convert to numeric
-effects_df$estimate <- as.numeric(effects_df$estimate)
-effects_df$lower    <- as.numeric(effects_df$lower)
-effects_df$upper    <- as.numeric(effects_df$upper)
-
-print(effects_df)
-
-#==============================================================================
-# FIGURE intermediate: SEM results — supported DAG + effect sizes
-# Panel A: Supported 4-node DAG (Model 5: t→p→h→S, t→h)
-# Panel B: Effect sizes plot
-# semPaths diagram can be generated separately or replaced by the DAG
-#==============================================================================
-
-# Panel A: The winning DAG (already exists as dag_5)
-dag_sem <- draw_dag_panel_4node(
-  edges = c("t_p", "t_h", "p_h", "h_s"),
-  title = "Supported model",
-  subtitles = character(0)
-) +
-  theme(
-    plot.background  = element_rect(fill = "white", color = "grey70", linewidth = 0.4),
-    panel.background = element_rect(fill = "white", color = NA),
-    plot.title = element_text(hjust = 0.5, size = 14, face = "italic")
-  )
-
-# Panel B: Effect sizes (already exists as effect_plot)
-# Recreate to ensure clean state:
-
-effects_df$estimate <- as.numeric(effects_df$estimate)
-effects_df$lower    <- as.numeric(effects_df$lower)
-effects_df$upper    <- as.numeric(effects_df$upper)
-
-p5B <- ggplot(effects_df, aes(y = path, x = estimate)) +
-  geom_col(fill = "grey70", color = "black", width = 0.6) +
-  geom_vline(xintercept = 0, linetype = "dashed", linewidth = 0.8) +
-  geom_errorbar(aes(xmin = lower, xmax = upper), width = 0.2, linewidth = 0.8) +
-  labs(y = "", x = "Standardized effect sizes") +
-  mytheme +
-  theme(
-    axis.text.y = element_text(hjust = 1, size = 16),
-    axis.text.x = element_text(size = 16),
-    axis.title.x = element_text(size = 16),
-    panel.grid.major.x = element_line(color = "grey90", linewidth = 0.3)
-  )+
-  scale_y_discrete(labels = function(x) parse(text = x))
-
-# =============================================================================
-# Figure 4: SEM path effects from POSTERIOR DRAWS (single source of truth)
-# Model:  scaled_cfu ~ t1*time_linear + t2*time_squared
-#         scaled_health_combined ~ a*scaled_cfu + h1*time_linear
-#         survival ~ b*scaled_health_combined
-#         indirect_p := a*b ; indirect_t := h1*b
-#
-# Inputs are pre-scaled, so raw coefficients ARE the standardized effects.
-# Everything (point estimate, CrI, density) comes from the draws -> no
-# dependence on parameterEstimates() column names.
-# =============================================================================
-
-path_labels <- c(
-  t1         = "italic(t) %->% italic(p)~(t[1])",
-  t2         = "italic(t)^2 %->% italic(p)~(t[2])",
-  a          = "italic(p) %->% italic(h)~(a)",
-  h1         = "italic(t) %->% italic(h)~(h[1])",
-  b          = "italic(h) %->% italic(s)~(b)",
-  indirect_p = "Indirect:~italic(p) %->% italic(h) %->% italic(s)",
-  indirect_t = "Indirect:~italic(t) %->% italic(h) %->% italic(s)"
-)
-path_order <- rev(unname(path_labels))
-
-# ---- Posterior draws of the free parameters --------------------------------
-# Combine chains by iterating the list (avoids coda's mcmc.list reconstruction,
-# which errors when blavaan returns chains not classed as `mcmc`).
-mc <- blavInspect(fit_sem, "mcmc")
-if (coda::is.mcmc(mc)) mc <- list(mc)            # single-chain safety
-draws <- do.call(rbind, lapply(mc, as.matrix))
-
-# blavaan named the columns with your labels, and already computed the
-# indirect effects as draws -> just select the seven of interest.
-keep <- c("t1", "t2", "a", "h1", "b", "indirect_p", "indirect_t")
-post <- as.data.frame(draws[, keep, drop = FALSE])
-
-plot_df <- post %>%
-  pivot_longer(everything(), names_to = "label", values_to = "value") %>%
-  mutate(path = factor(path_labels[label], levels = path_order)) %>%
-  group_by(path) %>% mutate(med = median(value)) %>% ungroup() %>%
-  mutate(effect = case_when(
-    abs(med) < 0.05 ~ "negligible",
-    med > 0         ~ "increases downstream",   # h -> s is positive
-    TRUE            ~ "decreases downstream"
-  ))
-
-# ---- Point estimate + 95% CrI table (replaces the broken effects_df) -------
-effects_df <- plot_df %>%
-  group_by(label, path) %>%
-  summarise(estimate = median(value),
-            lower    = quantile(value, 0.025),
-            upper    = quantile(value, 0.975),
-            .groups  = "drop") %>%
-  mutate(path = factor(path, levels = path_order)) %>%
-  arrange(path)
-print(effects_df)        # real numbers now
-
-# ---- Half-eye posterior figure ---------------------------------------------
-pal <- c("increases downstream" = "#19798b",
-         "decreases downstream" = "#b80422",
-         "negligible"           = "#888780")
-
-p <- ggplot(plot_df, aes(x = value, y = path, fill = effect, colour = effect)) +
-  geom_vline(xintercept = 0, linetype = "dashed", colour = "grey60", linewidth = 0.4) +
-  stat_halfeye(.width = c(0.66, 0.95), point_interval = "median_qi",
-               slab_alpha = 0.45, normalize = "groups", height = 0.9) +
-  scale_y_discrete(labels = function(l) parse(text = l)) +
-  scale_fill_manual(values = pal, name = NULL) +
-  scale_colour_manual(values = pal, name = NULL) +
-  labs(x = "Effect size (posterior)", y = NULL) +
-  mytheme+
-  theme(legend.position = "top", axis.text.y = element_text(hjust = 0))
-
-figure4 <- p +
-  inset_element(dag_sem,
-                left = 0.7, bottom = 0.02,    # bottom-right corner
-                right = 1.00, top = 0.35,
-                align_to = "panel",
-                on_top = TRUE)
-
-ggsave("figures/figure4.pdf", p, width = 7.5, height = 5.5)  # >>> Manuscript Figure 4 (SEM path effects, posterior draws).
-
 #=============================================
-# Cumulative burden - For Damage hypothesis
+# Cumulative burden 
 #=============================================
 
 #--------------------------------------------------------------------
@@ -2687,10 +3116,6 @@ inset_cum <- ggplot(df_cum_curve, aes(x = Time, y = log_cum)) +
     panel.grid.minor = element_blank()
   )
 
-ggsave("figures/cumulative_burden.pdf",
-       plot = inset_cum, width = 5, height = 5, units = "in", dpi = 300)
-
-
 # First, calculate cumulative burden
 # Using your fitted logistic parameters from logistic_logfit_full
 params_logistic <- coef(logistic_logfit_full)
@@ -2712,9 +3137,9 @@ burden_tidy_time <- burden_tidy_time %>%
 
 # which one predicts health better?
 # Test models
-m_instant <- lm(total_score ~ scaled_cfu, data = burden_tidy_time)
-m_cumulative <- lm(total_score ~ scaled_cum_burden, data = burden_tidy_time)
-m_both <- lm(total_score ~ scaled_cfu + scaled_cum_burden, data = burden_tidy_time)
+m_instant <- lm(health_combined ~ scaled_cfu, data = burden_tidy_time)
+m_cumulative <- lm(health_combined ~ scaled_cum_burden, data = burden_tidy_time)
+m_both <- lm(health_combined ~ scaled_cfu + scaled_cum_burden, data = burden_tidy_time)
 
 # Compare AIC
 AIC(m_instant, m_cumulative, m_both)
@@ -2735,263 +3160,3 @@ p_comparison <- burden_tidy_time %>%
   facet_wrap(~burden_type) +
   labs(x = "Standardized burden", y = "Standardized health") +
   mytheme
-
-
-#===============================================================================
-# SUPPLEMENTARY ANALYSIS: Cumulative Burden Estimation
-# Why cumulative measures are problematic in cross-sectional designs
-#===============================================================================
-
-#-------------------------------------------------------------------------------
-# METHOD 1: Integral of fitted logistic (current approach)
-#-------------------------------------------------------------------------------
-
-# Parameters from fitted logistic model
-params_logistic <- coef(logistic_logfit_full)
-K  <- params_logistic["K"]
-p0 <- params_logistic["p0"]
-r  <- params_logistic["r"]
-
-# Analytical integral: ∫₀ᵗ p(τ)dτ for logistic growth
-# Closed form: (K/r) * ln[1 + (p0/(K-p0)) * (e^(rt) - 1)]
-burden_tidy_time <- burden_tidy_time %>%
-  mutate(
-    cum_burden_integral = (K/r) * log1p((p0 / (K - p0)) * expm1(r * Time))
-  )
-
-#-------------------------------------------------------------------------------
-# METHOD 2: Trapezoidal sum of observed data
-#-------------------------------------------------------------------------------
-
-# Calculate population mean CFU at each timepoint
-mean_cfu_by_time <- burden_tidy_time %>%
-  group_by(Time) %>%
-  summarise(mean_cfu = mean(cfu, na.rm = TRUE), .groups = "drop") %>%
-  arrange(Time)
-
-# Trapezoidal integration of observed means
-# For each timepoint, sum area under curve from t=0 to t=T
-trapezoidal_cumsum <- function(times, values) {
-  n <- length(times)
-  if (n == 1) return(0)
-  
-  cumsum_vals <- numeric(n)
-  cumsum_vals[1] <- 0  # At t=0, cumulative = 0
-  
-  for (i in 2:n) {
-    # Trapezoidal rule: (t2-t1) * (y1+y2)/2
-    dt <- times[i] - times[i-1]
-    avg_val <- (values[i] + values[i-1]) / 2
-    cumsum_vals[i] <- cumsum_vals[i-1] + dt * avg_val
-  }
-  return(cumsum_vals)
-}
-
-mean_cfu_by_time <- mean_cfu_by_time %>%
-  mutate(cum_burden_trapezoid = trapezoidal_cumsum(Time, mean_cfu))
-
-# Merge back to individual data (assign population cumulative to each larva)
-burden_tidy_time <- burden_tidy_time %>%
-  left_join(mean_cfu_by_time %>% dplyr::select(Time, cum_burden_trapezoid), by = "Time")
-
-#-------------------------------------------------------------------------------
-# METHOD 3: Simple cumulative sum (cruder approach)
-#-------------------------------------------------------------------------------
-
-# Just sum mean CFU at all preceding timepoints (discrete approximation)
-burden_tidy_time <- burden_tidy_time %>%
-  mutate(
-    cum_burden_discrete = sapply(Time, function(t) {
-      sum(mean_cfu_by_time$mean_cfu[mean_cfu_by_time$Time <= t])
-    })
-  )
-
-#-------------------------------------------------------------------------------
-# COMPARISON: How similar are the three methods?
-#-------------------------------------------------------------------------------
-
-# Correlations
-cor_matrix <- burden_tidy_time %>%
-  dplyr::select(Time, cum_burden_integral, cum_burden_trapezoid, cum_burden_discrete) %>%
-  distinct() %>%
-  cor(use = "complete.obs")
-
-cat("\n=== Correlation matrix: Time vs Cumulative Burden Measures ===\n")
-print(round(cor_matrix, 4))
-
-# The key insight: ALL cumulative measures are near-perfectly correlated with time
-cat("\nCorrelation with Time:\n")
-
-cat("  Integral method:    r =", round(cor_matrix["Time", "cum_burden_integral"], 4), "\n")
-cat("  Trapezoidal method: r =", round(cor_matrix["Time", "cum_burden_trapezoid"], 4), "\n")
-cat("  Discrete method:    r =", round(cor_matrix["Time", "cum_burden_discrete"], 4), "\n")
-
-#-------------------------------------------------------------------------------
-# FIGURE S2: Comparison of cumulative burden estimation methods
-#-------------------------------------------------------------------------------
-
-# Panel A: All three methods vs time
-comparison_data <- burden_tidy_time %>%
-  dplyr::select(Time, cum_burden_integral, cum_burden_trapezoid, cum_burden_discrete) %>%
-  distinct() %>%
-  pivot_longer(cols = starts_with("cum_burden"), 
-               names_to = "method", 
-               values_to = "cumulative_burden") %>%
-  mutate(method = case_when(
-    method == "cum_burden_integral" ~ "Integral of fitted logistic",
-    method == "cum_burden_trapezoid" ~ "Trapezoidal sum of data",
-    method == "cum_burden_discrete" ~ "Discrete sum of data"
-  ))
-
-pA_supp <- ggplot(comparison_data, aes(x = Time, y = log10(cumulative_burden + 1), 
-                                       color = method, linetype = method)) +
-  geom_line(linewidth = 1.2) +
-  geom_point(size = 2) +
-  scale_color_manual(values = c("#ee9b43", "#19798b", "#b80422")) +
-  labs(x = "Time since infection (h)", 
-       y = expression(log[10](Cumulative~burden)),
-       color = "Method", linetype = "Method") +
-  mytheme +
-  theme(legend.position = c(0.6, 0.25))
-
-# Panel B: Integral vs Trapezoidal (method comparison)
-method_compare <- burden_tidy_time %>%
-  dplyr::select(Time, cum_burden_integral, cum_burden_trapezoid) %>%
-  distinct()
-
-pB_supp <- ggplot(method_compare, aes(x = log10(cum_burden_integral + 1), 
-                                      y = log10(cum_burden_trapezoid + 1))) +
-  geom_point(size = 3) +
-  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50") +
-  geom_smooth(method = "lm", se = FALSE, color = "#ee9b43") +
-  labs(x = expression(log[10](Integral~of~fitted~model)),
-       y = expression(log[10](Trapezoidal~sum~of~data))) +
-  annotate("text", x = 5, y = 8, 
-           label = paste0("r = ", round(cor(method_compare$cum_burden_integral, 
-                                            method_compare$cum_burden_trapezoid), 3)),
-           size = 6) +
-  mytheme
-
-# Panel C: THE PROBLEM - Cumulative burden vs Time (near-perfect correlation)
-pC_supp <- ggplot(method_compare, aes(x = Time, y = log10(cum_burden_integral + 1))) +
-  geom_point(size = 3, color = "#ee9b43") +
-  geom_smooth(method = "lm", se = TRUE, color = "black") +
-  labs(x = "Time since infection (hrs)",
-       y = expression(log[10](Cumulative~burden))) +
-  annotate("text", x = 10, y = 8, 
-           label = paste0("r = ", round(cor(method_compare$Time, 
-                                            method_compare$cum_burden_integral), 3)),
-           size = 6)+
-  mytheme
-
-# Panel D: Residual variance after accounting for time
-# If cumulative burden adds info beyond time, residuals should correlate with outcomes
-burden_tidy_time <- burden_tidy_time %>%
-  mutate(
-    # Residual cumulative burden after removing time effect
-    cum_burden_resid = residuals(lm(log10(cum_burden_integral + 1) ~ Time, 
-                                    data = burden_tidy_time))
-  )
-
-# Check: does residual cumulative burden predict health?
-m_resid <- lm(scaled_health ~ cum_burden_resid, data = burden_tidy_time)
-summary(m_resid)
-
-pD_supp <- ggplot(burden_tidy_time, aes(x = cum_burden_resid, y = scaled_health)) +
-  geom_point(aes(fill = status), shape = 21, size = 2, alpha = 0.7) +
-  geom_smooth(method = "lm", se = TRUE, color = "black") +
-  scale_fill_manual(values = c("#19798b", "#ee9b43")) +
-  labs(x = "Residual cumulative burden\n(after removing time effect)",
-       y = "Standardized health",
-       fill = "Status") +
-  annotate("text", x = -0.2, y = 1.8, 
-           label = paste0("β = ", round(coef(m_resid)[2], 3), 
-                          ", p = ", round(summary(m_resid)$coefficients[2,4], 3)),
-           size = 6) +
-  mytheme +
-  theme(legend.position = c(0.85, 0.9))
-
-# Combine
-figure_cumulative_supp <- (pA_supp | pB_supp) / (pC_supp | pD_supp) +
-  plot_annotation(tag_levels = "A") &
-  theme(plot.tag = element_text(face = "bold", size = 14))
-
-figure_cumulative_supp
-
-ggsave("figures/figureS2.pdf",  # >>> Supplementary Figure S2 (cumulative-burden methods + collinearity)
-       plot = figure_cumulative_supp, width = 10, height = 9.2, dpi = 300)
-
-#-------------------------------------------------------------------------------
-# STATISTICAL TEST: Does cumulative burden add information beyond time?
-#-------------------------------------------------------------------------------
-
-cat("\n=== Model comparison: Does cumulative burden add info beyond time? ===\n\n")
-
-# Predicting health
-m_time_only <- lm(scaled_health ~ Time, data = burden_tidy_time)
-m_cum_only  <- lm(scaled_health ~ log10(cum_burden_integral + 1), data = burden_tidy_time)
-m_both      <- lm(scaled_health ~ Time + log10(cum_burden_integral + 1), data = burden_tidy_time)
-
-cat("AIC comparison (predicting health):\n")
-print(AIC(m_time_only, m_cum_only, m_both))
-
-cat("\nModel with both predictors:\n")
-print(summary(m_both))
-
-# Key result: In the combined model, one predictor becomes non-significant
-# because they're colinear
-
-# Variance Inflation Factor
-library(car)
-cat("\nVariance Inflation Factor (VIF) in combined model:\n")
-print(vif(m_both))
-
-#-------------------------------------------------------------------------------
-# WHY THIS MATTERS FOR SEM
-#-------------------------------------------------------------------------------
-
-cat("\n=== Implications for Structural Equation Modeling ===\n\n")
-
-cat("The near-perfect correlation between cumulative burden and time creates problems:\n\n")
-
-cat("1. COLLINEARITY: When both are in a model, estimates become unstable\n")
-cat("   VIF > 10 indicates severe collinearity\n\n")
-
-cat("2. IDENTIFIABILITY: SEM cannot distinguish paths like:\n")
-cat("   t → Σp → h → S  vs.  t → h → S (with Σp as byproduct)\n")
-cat("   because Σp ≈ f(t) in cross-sectional data\n\n")
-
-cat("3. OVERFITTING: Models with Σp achieve low DIC by capturing\n")
-cat("   time-correlated noise, leading to poor predictive performance (PPP < 0.01)\n\n")
-
-cat("4. SOLUTION: The antibiotic intervention experiment breaks this collinearity\n")
-cat("   by manipulating cumulative exposure while holding assessment time constant.\n")
-cat("   Early vs late treatment creates larvae with DIFFERENT cumulative exposures\
-")
-cat("   assessed at the SAME time (24h), allowing causal identification.\n")
-
-#-------------------------------------------------------------------------------
-# SUMMARY TABLE FOR SUPPLEMENTARY
-#-------------------------------------------------------------------------------
-
-summary_table <- tibble(
-  Method = c("Integral of fitted logistic", 
-             "Trapezoidal sum of observed means",
-             "Discrete sum of observed means"),
-  Formula = c("(K/r) × ln[1 + (p₀/(K-p₀)) × (e^(rt) - 1)]",
-              "Σᵢ (tᵢ - tᵢ₋₁) × (p̄ᵢ + p̄ᵢ₋₁)/2",
-              "Σᵢ p̄ᵢ for all tᵢ ≤ t"),
-  `Correlation with Time` = c(
-    round(cor_matrix["Time", "cum_burden_integral"], 3),
-    round(cor_matrix["Time", "cum_burden_trapezoid"], 3),
-    round(cor_matrix["Time", "cum_burden_discrete"], 3)
-  ),
-  Pros = c("Smooth, uses all data, mechanistic",
-           "Model-free, captures data variation",
-           "Simplest, no interpolation"),
-  Cons = c("Model-dependent, near-deterministic with t",
-           "Sensitive to sampling density",
-           "Crude, ignores time intervals")
-)
-
-print(summary_table)
