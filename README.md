@@ -4,24 +4,27 @@ Analysis code and data for a study of within-host infection dynamics in *Galleri
 
 The manuscript frames this as a comparison of five candidate causal structures linking time since infection (*t*), pathogen burden (*p*), host condition (*h*), and survival (*s*): burden-driven, intrinsic decline, immune collapse, instantaneous damage, and cumulative damage. Only cumulative damage survives the tests reported here.
 
-A single script, `main_code.R`, reproduces every figure and statistical result: Gompertz survival modelling and logistic growth fits, causal (DAG / conditional-independence) analysis, Bayesian structural equation modelling of the health-mediated pathway, and the ciprofloxacin treatment-timing experiment, plus a supplementary cumulative-exposure (Σp) analysis.
+A single script, `main.R`, reproduces every figure and statistical result: Gompertz survival modelling and logistic growth fits, causal (DAG / conditional-independence) analysis, Bayesian structural equation modelling of the health-mediated pathway, and the ciprofloxacin treatment-timing experiment, plus a supplementary cumulative-exposure (Σp) analysis. It also writes a single labelled statistics file that every number quoted in the manuscript can be checked against.
 
 ## Repository structure
 
 ```
 Galleria_Survival/
-├── main_code.R        # Complete analysis pipeline (statistics + figures)
+├── main.R             # Complete analysis pipeline (statistics + figures)
 ├── README.md
 ├── data/              # Raw input data (read-only; not modified by the script)
-│   ├── AliveDead.csv
+│   ├── survival.csv
 │   ├── bacterial_burden.csv
 │   ├── health_assesment.csv
 │   ├── time_to_death.csv
 │   ├── control_survival.csv
 │   ├── bacterial_burden_ab.csv
-│   └── Galleria_AB_Data_3rd_trial.csv
-└── figures/           # Output figures (created when the script runs)
+│   └── health_assesment_ab.csv
+├── figures/           # Output figures (created when the script runs)
+└── results/           # statistics_for_manuscript.txt (created when the script runs)
 ```
+
+The working directory also contains an `old/` folder of superseded script versions. It is listed in `.gitignore` and is not part of the repository.
 
 ## Data
 
@@ -29,19 +32,46 @@ All inputs are comma-separated files in `data/`. The first five drive the infect
 
 | File | Contents |
 |------|----------|
-| `AliveDead.csv` | Per-larva survival status across the infection time course (infected cohort). |
+| `survival.csv` | Per-larva survival status across the infection time course (infected cohort). |
 | `bacterial_burden.csv` | Destructively sampled bacterial burden (CFU per larva) over time, with live/dead status. |
 | `health_assesment.csv` | Per-larva activity and melanization scores; the two components of the composite health index. |
 | `time_to_death.csv` | Recorded time of death for larvae that died. |
 | `control_survival.csv` | Survival of uninfected / vehicle-control larvae. |
 | `bacterial_burden_ab.csv` | Bacterial burden (24 h endpoint, CFU per larva) for the antibiotic-intervention experiment. |
-| `Galleria_AB_Data_3rd_trial.csv` | Antibiotic-intervention data: per-larva time from injection to treatment, survival, activity, and melanization. |
+| `health_assesment_ab.csv` | Antibiotic-intervention data: per-larva time from injection to treatment, survival, activity, and melanization. |
 
-**Note on the health index.** In the raw `health_assesment.csv` coding, melanization runs 1 (fully melanized / sickest) to 4 (no melanization / healthiest), so raw melanization is already oriented *higher = healthier*. Immediately after loading, the script reorients it to a severity scale (`melanization <- 4 - melanization`, higher = worse) because that is the orientation plotted in Figure 4B. Every composite health score is then built as `activity + (4 - melanization)`, applied to the reoriented variable, which recovers the raw value and restores a consistent **higher = healthier** orientation throughout the analysis.
+### The health index
 
-Because the flip and the composite are computed inside the same `mutate()` call, the order of those expressions matters. Do not reorder them.
+Both component scores are used **exactly as recorded, with no reorientation**:
 
-In the antibiotic dataset the raw `Melanization` column is used directly (`Total_health = Activity + Melanization`), which is already health-oriented and therefore consistent with `health_combined` in the main cohort.
+| Score | Range | Direction |
+|-------|-------|-----------|
+| `activity` | 0 (no movement) – 3 (fully active) | higher = healthier |
+| `melanization` | 0 (fully melanized) – 4 (no melanization) | higher = healthier |
+
+Both are already oriented *higher = healthier*, so both decline as infection progresses, and the composite is simply their sum:
+
+```r
+health_combined = activity + melanization      # range 0–7, higher = healthier
+```
+
+The same convention applies in the antibiotic dataset (`Total_health = Activity + Melanization`), so the two cohorts are directly comparable. Both shape-constrained smooths in Figure 4 are therefore fitted as monotone **decreasing** in burden (`bs = "mpd"`).
+
+Earlier versions of this code flipped melanization to a severity scale and rebuilt the composite as `activity + (4 - melanization)`. That is no longer done anywhere, and no `4 - melanization` term should appear in the script.
+
+### Detection limit
+
+A larva plated with no colonies is a measurement at the limit of detection, not a missing value. The lowest-dilution plates were 100 µl from a 250 µl homogenate at 10×, so one colony corresponds to
+
+```
+1 colony × 10 (dilution) × (250 µl / 100 µl) = 25 CFU per larva
+```
+
+Larvae yielding no colonies on any plate therefore enter the analysis at **LOD/2 = 12.5 CFU** rather than being dropped. Plates with no readable count (`Countable == "no"`) remain excluded. This gives **n = 86** larvae in the main cohort over the 4–36 h window (49 alive, 37 dead at sampling), one of which sits at LOD/2.
+
+In the antibiotic cohort the same rule applies per larva. One larva (G4 L20) had a dedicated 100 µl plate reading zero alongside a 10 µl spot on a shared plate reading 2 colonies; because multi-sample spot plates are prone to carryover, that spot is excluded and the larva enters at LOD/2.
+
+All standardised variables (`scaled_time`, `scaled_cfu`, `scaled_health`, …) are computed **after** the `Time < 37` filter, so they are standardised on the sample the models actually use.
 
 ## Requirements
 
@@ -65,33 +95,30 @@ install.packages(c(
 ))
 ```
 
-`logistf` supplies the penalised (Firth) likelihood used where host health near-perfectly separates survival; `coda` is used via `::` when combining MCMC chains; `car` provides `vif()` and `scales` the axis formatters.
+`logistf` supplies the penalised (Firth) likelihood used where host health near-perfectly separates survival; `survival` provides `survreg()` for the censored-health robustness check; `coda` is used via `::` when combining MCMC chains; `car` provides `vif()` and `scales` the axis formatters.
 
 **Bayesian SEM backend.** `blavaan` fits models via MCMC and requires a sampling backend — either **Stan** (`rstan`) or **JAGS** (`rjags`, which needs a system JAGS install). Set this up following the `blavaan` documentation before running the SEM section; this is the most computationally intensive step.
 
 ## Running the analysis
 
 1. Clone the repository and place the seven data files in `data/`.
-2. Open `main_code.R` and point the working directory at the repository root. The script sets it explicitly near the top:
+2. Run from the repository root — most simply by opening `Galleria_Survival.Rproj` in RStudio. The script does not set a working directory of its own; it checks that `data/` is visible and stops with a clear message if it is not. If you need to point it somewhere else, uncomment and edit the line near the top:
 
    ```r
-   setwd("~/Documents/GitHub/Galleria_Survival")
+   # setwd("~/Documents/GitHub/Galleria_Survival")
    ```
-
-   Edit this line to your local path, or comment it out and run from the repo root (e.g. via an RStudio Project).
 3. Install the packages listed above and configure the `blavaan` backend.
-4. Create the output directory if it does not exist, then run the script:
+4. Run the script:
 
    ```r
-   dir.create("figures", showWarnings = FALSE)
-   source("main_code.R")
+   source("main.R")
    ```
 
-   Figures are written to `figures/`.
+   `figures/` and `results/` are created automatically. A full run takes a few minutes, dominated by the three SEM fits.
 
-The script must be run top to bottom in a clean session: several later objects (the fitted logistic parameters `K`, `p0`, `r`, and the Gompertz coefficients) are reused by downstream sections and are not recomputed.
+**Run it top to bottom in a clean session.** This matters more than it sounds. Later sections reuse fitted objects from earlier ones — the logistic parameters `K`, `p0`, `r`, the Gompertz coefficients, and the SEM posterior draws — and none of them are recomputed. Running sections out of order, or into a session left over from a previous version of the script, can silently produce figures built from stale objects rather than failing. Restarting R (or running with `Rscript`, which does not restore `.RData`) avoids this entirely.
 
-A seed is set at each stochastic step — the growth and T50 bootstraps each seed their own resampling, and the SEM uses `set.seed(6789)` — so a clean rerun reproduces the reported estimates. The SEM sampling takes the longest by far.
+A seed is set at each stochastic step — the growth and T50 bootstraps each seed their own resampling, the plotted jitter is seeded, and the SEMs use `set.seed(6789)` and `set.seed(6790)` — so a clean rerun reproduces the reported estimates.
 
 ## Outputs
 
@@ -102,9 +129,9 @@ A seed is set at each stochastic step — the growth and T50 bootstraps each see
 | `figure1.pdf` | **Fig 1** — The five candidate causal structures (burden-driven, intrinsic decline, immune collapse, instantaneous damage, cumulative damage). |
 | `figure2.pdf` | **Fig 2** — Survival curves with Gompertz fit and instantaneous mortality *m(t)* inset, plus the growth and burden-to-mortality mapping the burden-driven reading requires. |
 | `figure3.pdf` | **Fig 3** — Logistic pathogen growth across the live–dead threshold (all larvae vs. survivors only). |
-| `figure4.pdf` | **Fig 4** — Activity and melanization against pathogen burden, with AT50 / MT50 / LT50 timing. |
-| `figure5.pdf` | **Fig 5** — Bayesian SEM path effects for the supported structure, as full posterior distributions, with the supported DAG inset. Assembled manually from `figure5_base.pdf` and `figure5_inset.pdf` (see below). |
-| `figure6.pdf` | **Fig 6** — Timed ciprofloxacin intervention: grouped summaries (panels A–C) and the continuous per-larva dose–response against injection-to-treatment delay (panels D–F). |
+| `figure4.pdf` | **Fig 4** — Activity (A) and melanization (B) against pathogen burden, coloured by time, with the AT50 / MT50 / LT50 transition timing (C). |
+| `figure5.pdf` | **Fig 5** — Bayesian SEM path effects as full posterior distributions, faceted by outcome equation, with the fitted DAG inset. The time route is shown as a marginal effect at three sampling times. |
+| `figure6.pdf` | **Fig 6** — Timed ciprofloxacin intervention. Top row: grouped summaries of survival (A), burden (B), health (C). Bottom row: the continuous per-larva dose–response against injection-to-treatment delay, in the same order (D–F). |
 
 ### Supplementary figures
 
@@ -115,29 +142,50 @@ A seed is set at each stochastic step — the growth and T50 bootstraps each see
 | `figureS3.pdf` | **Fig S3** — Implied *m(p)* mapping with its pole at carrying capacity, three-node pathogen DAGs, and conditional-independence diagnostics (supports Note S3). |
 | `figureS4.pdf` | **Fig S4** — Four-node health DAGs and conditional-independence diagnostics (supports Note S3). |
 
-The script may also emit intermediate outputs that are **not** part of the manuscript — an alternative point-estimate/interval rendering of the SEM (`p5B`), a `semPaths` diagram, and a standalone cumulative-exposure (Σp) inset — which can be ignored.
+All ten figures are written directly by `main.R` and need no further editing.
 
-### Figure 5 is assembled manually
+### DAG rendering
 
-Every figure except Figure 5 is written directly by `main_code.R` and needs no further editing. Figure 5 is the exception: the `patchwork::inset_element` placement of the supported-DAG inset did not render acceptably, so the published figure was composed by hand from two script outputs — `figure5_base.pdf` (the posterior half-eye plot) and `figure5_inset.pdf` (the supported-model DAG).
+Every DAG in the paper is drawn by one function (`draw_dag()`) with one node layout, one geometry, and one type scale, so panels are directly comparable across Figures 1, S3, S4 and the Figure 5 inset. Structural DAGs are drawn in **grey**: they are possibilities under test, not results. Colour appears in one place only — the Figure 5 inset — where each edge carries the sign of its fitted path (teal arrowhead for positive, red blunt bar for negative), read from the SEM posterior.
 
-`main_code.R` therefore does **not** write `figure5.pdf`. The published composite is committed to `figures/` and is not regenerated by a rerun, so a full rerun will not overwrite it.
+### Statistics file
+
+`results/statistics_for_manuscript.txt` collects every value quoted in the manuscript in one place, grouped by where it appears, and compares each against the value currently in the text:
+
+```
+  Gompertz b (h^-1)                            0.4                     [ok]
+  standardised beta (z_time:z_cfu)             -0.939                  [ok]
+    text claims p < 0.001                      4.45e-08                [ok: < 0.001]
+  MT50 as printed in the fig 4 caption         21                      [ok]
+```
+
+| Marker | Meaning |
+|--------|---------|
+| `[ok]` | recomputed value matches the manuscript |
+| `[CHECK: ms = x]` | they differ — reconcile before submission |
+| `[ok: < x]` | a claim stated as a bound, and the bound holds |
+| `MISSING` | object not in the workspace (section not run?) |
+
+The reference column is meant to mirror **what the manuscript currently says**, not what the code computes. Nine of those values were updated after the detection-limit correction; the file header lists them with their previous values, and each is annotated `# reconciled 2026-08-23 (was …)` at its call site, so an `[ok]` can always be distinguished from a number silently compared with itself.
 
 ## Analysis overview
 
 The script proceeds through the following stages:
 
 1. **Candidate causal structures.** Draw the five hypotheses as DAGs (Fig 1). Schematic only; no statistics.
-2. **Data loading and health index.** Read the survival, burden, health, time-to-death, and control data; construct the activity + melanization composite health score (higher = healthier).
+2. **Data loading and health index.** Read the survival, burden, health, time-to-death, and control data; apply the detection limit; construct the activity + melanization composite health score (higher = healthier).
 3. **Survival and mortality.** Fit survival curves and Gompertz mortality models, and show what a strictly burden-driven account would require (Fig 2).
 4. **Pathogen growth.** Compare logistic, exponential, and linear growth models for bacterial burden — fit to all larvae and to survivors only to expose survivor bias (Fig 3) — check post-mortem burden stability (Fig S1), and derive the implied instantaneous-mortality mapping *m(p)* (a panel of Fig S3).
 5. **Health dynamics.** Characterise activity and melanization trajectories and their timing (AT50, MT50, LT50) relative to burden (Fig 4).
-6. **Causal analysis.** Build candidate DAGs and run conditional-independence tests for the three-node pathogen (Fig S3) and four-node health (Fig S4) structures, including the melanization-only sensitivity analysis.
-7. **Structural equation model.** Fit a Bayesian SEM of the supported causal structure (*t → p → h → s* with *t → h*) and summarise the health-mediated effects of pathogen burden and time on survival as posterior distributions (Fig 5).
+6. **Causal analysis.** Build candidate DAGs and run conditional-independence tests for the three-node pathogen (Fig S3) and four-node health (Fig S4) structures, including the melanization-only sensitivity analysis and a censored-regression robustness check for the 0–7 floor and ceiling of the health score.
+7. **Structural equation model.** Fit Bayesian SEMs of the supported causal structure (*t → p → h → s* with *t → h*) in a linear and a quadratic-in-time form, and summarise the health-mediated effects as posterior distributions (Fig 5). Because the quadratic model makes the *t → h* path depend on when the larva was sampled, that path is reported as a marginal effect at three sampling times rather than as a single coefficient.
 8. **Antibiotic intervention.** Analyse the ciprofloxacin treatment-timing experiment, both by treatment group and as a continuous per-larva dose–response against injection-to-treatment delay (Fig 6).
 9. **Supplementary cumulative-burden analysis.** Re-express pre-treatment exposure as the integral of fitted logistic growth (Σp), test whether it adds information beyond time, and document the cumulative-burden / sampling-time collinearity (Fig S2; Supplementary Note S2).
+10. **Manuscript number report.** Recompute every quoted value and write `results/statistics_for_manuscript.txt`.
 
-Note that the script's internal section order does not match the manuscript figure order: Figure 5 (SEM) is produced after Figure 6 (antibiotics), and the supplementary figures are interleaved. The `ggsave` filenames are authoritative.
+A note on model comparison in stage 7: the DIC of the no-mediation model is **not** comparable with the two mediation models, because it has no health outcome and so sums deviance over two modelled variables rather than three. Only the linear and quadratic mediation models can be compared on DIC; the no-mediation model is judged on its posterior predictive *p* alone. The statistics file flags this where the numbers are printed.
+
+Note that the script's internal section order does not match the manuscript figure order: Figure 5 (SEM) is produced after Figure S4, and the supplementary figures are interleaved. The `ggsave` filenames are authoritative.
 
 ## Citation
 

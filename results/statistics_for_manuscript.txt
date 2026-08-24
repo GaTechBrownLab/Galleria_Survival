@@ -1,0 +1,511 @@
+============================================================================== 
+STATISTICS FOR THE MANUSCRIPT
+Host-health integrates infection history to determine survival
+during acute Pseudomonas aeruginosa infection
+============================================================================== 
+Generated: 2026-08-24 16:34:27
+Script:    main_cleaned.R
+R:         R version 4.6.0 (2026-04-24)
+
+Legend:  [ok] recomputed value matches the manuscript
+         [CHECK] they differ -- reconcile before submission
+         [ok: < x] a claim stated as a bound, and the bound holds
+         MISSING object not in the workspace (section not run?)
+
+------------------------------------------------------------------------------
+RECONCILED 2026-08-23. Nine reference values were updated in the manuscript
+after the detection-limit correction (n = 85 -> 86, zero-count larvae now
+entering at LOD/2). The values below are the CURRENT published ones, so
+their [ok] means genuine agreement, not a number compared with itself.
+Previous values are recorded beside each call in the source.
+
+  row                                  was        -> now
+  N infected                           130        -> 128
+  MT50 in the fig 4 caption            21.5       -> 21.0
+  spline-adjusted p_Time               6e-08      -> 4.5e-08
+  beta_cfu (per SD)                    -0.308     -> -0.317
+  beta_time (per SD)                   -0.015     -> -0.012
+  standardised beta (z_time:z_cfu)     -0.75      -> -0.939
+  standardised p    (z_time:z_cfu)     7.5e-4     -> 3e-05
+  interaction F                        12.3       -> 19.6
+  interaction p                        7.5e-4     -> 3e-05
+------------------------------------------------------------------------------ 
+
+==============================================================================
+SAMPLE SIZES AND DATA DECISIONS
+==============================================================================
+  n, main cohort (Time < 37 h)                 86                      [ok]
+    alive at sampling                          49                    
+    dead at sampling                           37                    
+    entering at LOD/2                          1                     
+  detection limit (CFU/larva)                  25                      [ok]
+  mean sampling time (h)                       19.9                  
+  sd sampling time (h)                         10.4                  
+  n, antibiotic cohort (scored)                160                     [ok]
+  n, antibiotic cohort (plated)                120                   
+  n, CIP-treated with a recorded delay         100                     [ok]
+  Health index = activity + melanization, both RAW (higher = healthier).
+  Standardisation is applied after filter(Time < 37).
+
+==============================================================================
+ABSTRACT
+==============================================================================
+  (no numerical claims after the 'three orders of magnitude' cut --
+   if any number reappears here, it must also appear in Results)
+
+==============================================================================
+RESULTS (a)  Exponential mortality  [figure 2]
+==============================================================================
+  N infected (larvae at t = 1 h)               128                     [ok]
+  Gompertz a (h^-1)                            4.14e-05                [ok]
+  Gompertz b (h^-1)                            0.4                     [ok]
+
+==============================================================================
+RESULTS (b)  Logistic growth  [figure 3]
+==============================================================================
+  AIC logistic                                 190                     [ok]
+  AIC exponential                              220                     [ok]
+    (an older code comment quoted 186 / 215 -- reconcile with the above)
+  K (CFU/host)                                 3200000                 [ok]
+  r, all larvae (h^-1)                         0.47                    [ok]
+  r, survivors only (h^-1)                     0.4                     [ok]
+  K, survivors only (CFU/host)                 4e+05                 
+  doubling time, all larvae (h)                1.47                  
+  doubling time, survivors only (h)            1.72                  
+
+--- bootstrap model selection (lowest AIC over 1000 resamples) ---
+  logistic wins, all larvae (%)                100                     [ok]
+  exponential wins, all larvae (%)             0                     
+  logistic wins, survivors only (%)            63                      [ok]
+  exponential wins, survivors only (%)         37                    
+  usable replicates, all / survivors           1000, 1000            
+  post-mortem beta                             0.00123                 [ok]
+  post-mortem p                                0.96                    [ok]
+
+==============================================================================
+RESULTS (b)  Conditional independence  s _||_ t | p
+==============================================================================
+
+--- additive GLM (m_cond) ---
+  beta_Time                                    -0.224                  [ok]
+  p_Time                                       0.00899               
+  beta_logCFU                                  -1.64                   [ok]
+  p_logCFU                                     0.013                   [ok]
+
+--- flexible-burden GAM (m_flex) -- robustness ---
+  beta_Time                                    -0.235                  [ok]
+  p_Time                                       0.0064                  [ok]
+  edf s(log_CFU)                               1.84                    [ok]
+  chi-sq s(log_CFU)                            7.19                    [ok]
+  p s(log_CFU)                                 0.043                   [ok]
+  deviance explained (%)                       74.9                    [ok]
+
+--- interaction LRT (m_cond vs m_int) ---
+  delta deviance                               2.4                     [ok]
+  p                                            0.12                    [ok]
+
+==============================================================================
+RESULTS (c)  Host health  [figure 4]
+==============================================================================
+
+--- transition timing ---
+  AT50 (h)                                     20.3                    [ok]
+  AT50 CI lo                                   18.4                    [ok]
+  AT50 CI hi                                   22                      [ok]
+  MT50 (h)                                     21                      [ok]
+  MT50 CI lo                                   18.2                    [ok]
+  MT50 CI hi                                   23.5                    [ok]
+  LT50 (h)                                     23.3                    [ok]
+  LT50 CI lo                                   20.8                    [ok]
+  LT50 CI hi                                   25.5                    [ok]
+  LT50 - AT50 (h)  ['~3 h']                    3                       [ok]
+  P(AT50 < MT50)                               0.64                    [ok]
+  P(AT50 < LT50)                               0.97                    [ok]
+  P(MT50 < LT50)                               0.9                     [ok]
+  MT50 as printed in the fig 4 caption         21                      [ok]
+    ^ the manuscript value here is the FIGURE 4 CAPTION, not the main text.
+      If this row shows [CHECK], the caption still needs updating.
+
+--- composite health index ---
+  r(activity, melanization)                    0.87                    [ok]
+  n                                            86                      [ok]
+  monotone-consistent larvae                   80                    
+    of n                                       86                    
+    percent                                    93                    
+
+--- t _||_ h | p   (rejects instantaneous damage)  [m_D] ---
+  beta_Time                                    -0.166                  [ok]
+  p_Time                                       2.1e-06                 [ok]
+  beta_logCFU                                  -0.658                  [ok]
+  R-squared                                    0.75                    [ok]
+  spline-adjusted beta_Time (units/h)          -0.172                  [ok]
+  spline-adjusted p_Time                       4.45e-08                [ok]
+    text claims p < 0.001                      4.45e-08                [ok: < 0.001]
+    edf s(log_CFU)  [health GAM]               4.27                    [ok]
+    F   s(log_CFU)  [health GAM]               11.37                 
+    p   s(log_CFU)  [health GAM]               0                     
+    deviance explained (%) [health GAM]        84.6                    [ok]
+    adjusted R-squared     [health GAM]        0.836                 
+    This is the HEALTH GAM (health_combined ~ Time + s(log_CFU), gaussian).
+    Do NOT confuse its edf with the edf reported earlier for m_flex, which
+    is a different model (alive ~ Time + s(log_CFU), binomial).
+    All four values in the robustness sentence (edf, beta, p, deviance)
+    are checked above and come from this one fit.
+
+--- h _||_ s | p   (rejects immune collapse)  [penalised] ---
+  beta_h (per SD)                              4.71                    [ok]
+  profile p_h                                  1.35e-07              
+  beta_cfu (per SD)                            -0.317                  [ok]
+  profile p_cfu                                0.738                   [ok]
+
+--- s _||_ t | h   (supports cumulative damage)  [penalised] ---
+  beta_h (per SD)                              4.87                    [ok]
+  beta_time (per SD)                           -0.012                  [ok]
+  profile p_time                               0.991                   [ok]
+
+--- unpenalised LRT corroboration ---
+  p: Time | h   (m_F_null vs m_F)              0.929                 
+  p: logCFU | h (m_F_null vs m_E)              0.426                 
+  (Wald p were 0.93 / 0.47 -- unreliable under separation, do not quote)
+  residual deviance m_E                        10.3                  
+  residual deviance m_F                        10.9                  
+
+--- figure S4 caption, panel D  [m_D: lm(h ~ Time + log_CFU)] ---
+  beta_Time                                    -0.166                  [ok]
+    ^ caption currently prints -0.16; the value is -0.166, which rounds
+      to -0.17. -0.16 is a truncation, not a rounding.
+  caption claims p < 0.001                     2.14e-06                [ok: < 0.001]
+
+--- figure S4 caption, panel E ---
+  beta_h  [PENALISED, per SD, fit_logistf]     4.71                    [ok]
+    ^ caption currently prints 4.66; the current value is 4.71.
+  caption claims profile p_h < 1e-6            1.35e-07                [ok: < 1e-06]
+  beta_logCFU  [RAW, unpenalised, m_E]         -0.624                  [ok]
+    Wald p_logCFU  (what the caption quotes)   0.47                    [ok]
+    LRT  p_logCFU  (m_F_null vs m_E)           0.43                  
+    penalised profile p_cfu (per SD)           0.74                  
+    NOTE two problems with this panel's caption:
+    1. beta_h is quoted PENALISED and PER SD while beta_logCFU is quoted
+       RAW and UNPENALISED. They are different scales from different
+       estimators, so 4.71 and -0.62 are not comparable magnitudes.
+    2. p = 0.47 is the WALD p. The code's own note says the Wald p is
+       unreliable here because health nearly separates survival. The LRT
+       (0.43) or the penalised profile p (0.74) is the defensible choice.
+       All three support the null, so only the quoted number changes.
+
+--- figure S4 caption, panel F  [m_F: glm(survival ~ Time + h)] ---
+  beta_Time  [RAW, unpenalised]                -0.012                  [ok]
+    Wald p_Time                                0.93                    [ok]
+    LRT  p_Time (m_F_null vs m_F)              0.93                    [ok]
+    Panel F is sound: the Wald and LRT p agree to three figures (0.929),
+    so quoting 0.93 is safe here even though it is not in panel E.
+
+--- melanization-only sensitivity ---
+  beta_Time                                    -0.17                   [ok]
+  p_Time                                       0.022                   [ok]
+  beta_logCFU                                  -1.13                   [ok]
+  p_logCFU                                     0.037                   [ok]
+  chi-sq activity                              33.36                   [ok]
+  chi-sq melanization                          17.28                   [ok]
+
+==============================================================================
+RESULTS (d)  Bayesian SEM  [figure 5]
+==============================================================================
+  Figure 5 plots the QUADRATIC model (fit_sem_quad): the time route is
+  evaluated at z = -1, 0, +1, i.e. the marginal effect t1 + 2*t2*z.
+  z = -1, 0, +1 correspond to Time = 9.5, 19.9, 30.3 h.
+  Panel labels say 10 / 20 / 30 h -- check those against the line above.
+
+  Standardised path effects, posterior median and 95% CrI:
+
+    t -> p  at 10 h           1.397   95% CrI [  1.146,   1.651]   P(sign) = 1.000
+    t -> p  at 20 h           0.876   95% CrI [  0.776,   0.975]   P(sign) = 1.000
+    t -> p  at 30 h           0.353   95% CrI [  0.113,   0.599]   P(sign) = 0.998
+    p -> h  (a)              -0.508   95% CrI [ -0.739,  -0.278]   P(sign) = 1.000
+    t -> h  at 10 h           0.008   95% CrI [ -0.401,   0.423]   P(sign) = 0.515
+    t -> h  at 20 h          -0.401   95% CrI [ -0.626,  -0.174]   P(sign) = 1.000
+    t -> h  at 30 h          -0.808   95% CrI [ -1.075,  -0.546]   P(sign) = 1.000
+    h -> s  (b)               0.465   95% CrI [  0.426,   0.503]   P(sign) = 1.000
+
+  Model comparison:
+    fit_sem        DIC =     192.2   ppp = 0.096
+    fit_sem_quad   DIC =     184.8   ppp = 0.489
+    fit_no_h       DIC =     144.8   ppp = 0.029   <- DIC NOT COMPARABLE
+
+ fit_no_h has NO scaled_health_combined
+  outcome, so its deviance is summed over two modelled variables instead of
+  three. Its DIC is on a different scale and is NOT comparable with the other
+  two -- it is not the winner, despite being the lowest number in the column.
+  The only valid DIC comparison here is fit_sem vs fit_sem_quad (same three
+  outcomes, nested mean structure). Judge fit_no_h on its posterior
+  predictive p alone, which is where it fails.
+
+  Convergence (max PSRF, converged if < 1.01):
+    fit_sem        1.0000
+    fit_sem_quad   1.0000
+    fit_no_h       1.0001
+
+  Full posterior summary, SUPPORTED model (quadratic, plotted in Fig 5):
+
+blavaan 0.5.10 ended normally after 5000 iterations
+
+  Estimator                                      BAYES
+  Optimization method                             MCMC
+  Number of model parameters                         9
+
+  Number of observations                            86
+
+  Statistic                                 MargLogLik         PPP
+  Value                                       -126.566       0.489
+
+Parameter Estimates:
+
+
+Regressions:
+                           Estimate  Post.SD pi.lower pi.upper     Rhat    Prior       
+  scaled_cfu ~                                                                         
+    time_linr (t1)            0.876    0.050    0.776    0.975    1.000    normal(0,10)
+    time_sqrd (t2)           -0.261    0.058   -0.373   -0.149    1.000    normal(0,10)
+  scaled_health_combined ~                                                             
+    scaled_cf  (a)           -0.509    0.116   -0.739   -0.278    1.000    normal(0,10)
+    time_linr (h1)           -0.400    0.114   -0.626   -0.174    1.000    normal(0,10)
+    time_sqrd (h2)           -0.204    0.068   -0.338   -0.073    1.000    normal(0,10)
+  survival ~                                                                           
+    scld_hlt_  (b)            0.465    0.020    0.426    0.503    1.000    normal(0,10)
+
+Variances:
+                   Estimate  Post.SD pi.lower pi.upper     Rhat    Prior       
+   .scaled_cfu        0.215    0.034    0.158    0.289    1.000 gamma(1,.5)[sd]
+   .scld_hlth_cmbn    0.235    0.037    0.173    0.318    1.000 gamma(1,.5)[sd]
+   .survival          0.033    0.005    0.024    0.044    1.000 gamma(1,.5)[sd]
+
+Defined Parameters:
+                   Estimate  Post.SD pi.lower pi.upper     Rhat    Prior       
+    t_to_h_early      0.009    0.210   -0.404    0.421                         
+    t_to_h_mean      -0.400    0.114   -0.624   -0.176                         
+    t_to_h_late      -0.808    0.136   -1.075   -0.542                         
+    indirect_p       -0.236    0.055   -0.344   -0.129                         
+    indirect_t_rly    0.004    0.098   -0.188    0.196                         
+    indirect_t_men   -0.186    0.054   -0.291   -0.080                         
+    indirect_t_lat   -0.376    0.065   -0.504   -0.248                         
+
+                          Estimate    Post.SD   pi.lower   pi.upper       Rhat      Prior         
+ "   time_linr (t1)"      "   0.876" "   0.050" "   0.776" "   0.975" "   1.000" "   normal(0,10)"
+ "   time_sqrd (t2)"      "  -0.261" "   0.058" "  -0.373" "  -0.149" "   1.000" "   normal(0,10)"
+ "   scaled_cf  (a)"      "  -0.509" "   0.116" "  -0.739" "  -0.278" "   1.000" "   normal(0,10)"
+ "   time_linr (h1)"      "  -0.400" "   0.114" "  -0.626" "  -0.174" "   1.000" "   normal(0,10)"
+ "   time_sqrd (h2)"      "  -0.204" "   0.068" "  -0.338" "  -0.073" "   1.000" "   normal(0,10)"
+ "   scld_hlt_  (b)"      "   0.465" "   0.020" "   0.426" "   0.503" "   1.000" "   normal(0,10)"
+ "  .scaled_cfu    "      "   0.215" "   0.034" "   0.158" "   0.289" "   1.000" "gamma(1,.5)[sd]"
+ "  .scld_hlth_cmbn"      "   0.235" "   0.037" "   0.173" "   0.318" "   1.000" "gamma(1,.5)[sd]"
+ "  .survival      "      "   0.033" "   0.005" "   0.024" "   0.044" "   1.000" "gamma(1,.5)[sd]"
+ "           time_linear" "   0.988" ""         "        " "        " "        " "               "
+ "           time_linear" "   0.053" ""         "        " "        " "        " "               "
+ "          time_squared" "   0.765" ""         "        " "        " "        " "               "
+ "   t_to_h_early  "      "   0.009" "   0.210" "  -0.404" "   0.421" "        " "               "
+ "   t_to_h_mean   "      "  -0.400" "   0.114" "  -0.624" "  -0.176" "        " "               "
+ "   t_to_h_late   "      "  -0.808" "   0.136" "  -1.075" "  -0.542" "        " "               "
+ "   indirect_p    "      "  -0.236" "   0.055" "  -0.344" "  -0.129" "        " "               "
+ "   indirect_t_rly"      "   0.004" "   0.098" "  -0.188" "   0.196" "        " "               "
+ "   indirect_t_men"      "  -0.186" "   0.054" "  -0.291" "  -0.080" "        " "               "
+ "   indirect_t_lat"      "  -0.376" "   0.065" "  -0.504" "  -0.248" "        " "               "
+
+  Full posterior summary, nested linear comparison model:
+
+blavaan 0.5.10 ended normally after 5000 iterations
+
+  Estimator                                      BAYES
+  Optimization method                             MCMC
+  Number of model parameters                         8
+
+  Number of observations                            86
+
+  Statistic                                 MargLogLik         PPP
+  Value                                       -125.993       0.096
+
+Parameter Estimates:
+
+
+Regressions:
+                           Estimate  Post.SD pi.lower pi.upper     Rhat    Prior       
+  scaled_cfu ~                                                                         
+    time_linr (t1)            0.876    0.051    0.776    0.975    1.000    normal(0,10)
+    time_sqrd (t2)           -0.261    0.058   -0.375   -0.149    1.000    normal(0,10)
+  scaled_health_combined ~                                                             
+    scaled_cf  (a)           -0.348    0.110   -0.561   -0.132    1.000    normal(0,10)
+    time_linr (h1)           -0.548    0.110   -0.765   -0.330    1.000    normal(0,10)
+  survival ~                                                                           
+    scld_hlt_  (b)            0.465    0.020    0.426    0.504    1.000    normal(0,10)
+
+Variances:
+                   Estimate  Post.SD pi.lower pi.upper     Rhat    Prior       
+   .scaled_cfu        0.214    0.034    0.157    0.292    1.000 gamma(1,.5)[sd]
+   .scld_hlth_cmbn    0.259    0.041    0.190    0.352    1.000 gamma(1,.5)[sd]
+   .survival          0.033    0.005    0.024    0.044    1.000 gamma(1,.5)[sd]
+
+Defined Parameters:
+                   Estimate  Post.SD pi.lower pi.upper     Rhat    Prior       
+    indirect_p       -0.162    0.052   -0.263   -0.061                         
+    indirect_t       -0.255    0.052   -0.357   -0.153                         
+
+                          Estimate    Post.SD   pi.lower   pi.upper       Rhat      Prior         
+ "   time_linr (t1)"      "   0.876" "   0.051" "   0.776" "   0.975" "   1.000" "   normal(0,10)"
+ "   time_sqrd (t2)"      "  -0.261" "   0.058" "  -0.375" "  -0.149" "   1.000" "   normal(0,10)"
+ "   scaled_cf  (a)"      "  -0.348" "   0.110" "  -0.561" "  -0.132" "   1.000" "   normal(0,10)"
+ "   time_linr (h1)"      "  -0.548" "   0.110" "  -0.765" "  -0.330" "   1.000" "   normal(0,10)"
+ "   scld_hlt_  (b)"      "   0.465" "   0.020" "   0.426" "   0.504" "   1.000" "   normal(0,10)"
+ "  .scaled_cfu    "      "   0.214" "   0.034" "   0.157" "   0.292" "   1.000" "gamma(1,.5)[sd]"
+ "  .scld_hlth_cmbn"      "   0.259" "   0.041" "   0.190" "   0.352" "   1.000" "gamma(1,.5)[sd]"
+ "  .survival      "      "   0.033" "   0.005" "   0.024" "   0.044" "   1.000" "gamma(1,.5)[sd]"
+ "           time_linear" "   0.988" ""         "        " "        " "        " "               "
+ "           time_linear" "   0.053" ""         "        " "        " "        " "               "
+ "          time_squared" "   0.765" ""         "        " "        " "        " "               "
+ "   indirect_p    "      "  -0.162" "   0.052" "  -0.263" "  -0.061" "        " "               "
+ "   indirect_t    "      "  -0.255" "   0.052" "  -0.357" "  -0.153" "        " "               "
+
+==============================================================================
+RESULTS (e)  Antibiotic timing  [figure 6]
+==============================================================================
+  beta survival ~ delay (per h)                -0.0988               
+  p survival ~ delay                           0.0477                
+  beta health ~ delay (per h)                  -0.201                
+  p health ~ delay                             0.00233               
+  beta logCFU ~ delay (per h)                  0.0674                
+  p logCFU ~ delay                             0.041                 
+  ('final density independent of treatment timing' rests on this p)
+
+--- group summaries at the 24 h endpoint ---
+  survival, treatment 0 h (%)                  65                      [ok]
+  survival, treatment 3 h (%)                  65                    
+  survival, treatment 12 h (%)                 35                    
+  survival, no treatment (%)                   30                      [ok]
+  survival, uninfected controls (%)            100                   
+  health, treatment 0 h                        4.7                     [ok]
+  health, no treatment                         2.25                    [ok]
+  log10 CFU, treatment 12 h                    4.61                    [ok]
+  log10 CFU, no treatment                      5.37                    [ok]
+  burden reduction, 12 h vs untreated (log10)  0.757                 
+    The load-bearing contrast: late treatment cut burden but not mortality.
+
+--- treatment window ---
+  delay at P(survival) = 0.5 (h)               9                       [ok]
+    approx SE (h)                              2.5                     [ok]
+  delay at P(survival) = 0.5 (min)             540                   
+
+--- group comparisons ---
+  chi-square across infected groups            10.3                  
+    df                                         5                     
+    p                                          0.067                 
+  pooled early (0 h + 3 h) survival (%)        65                      [ok]
+  Fisher early (0-3 h pooled) vs untreated, p  0.014                   [ok]
+    OR for DEATH, early / untreated            0.24                    [ok]
+      95% CI lo                                0.0601                
+      95% CI hi                                0.833                 
+    OR for SURVIVAL, early / untreated  (= 1/OR) 4.22                  
+      95% CI lo                                1.2                   
+      95% CI hi                                16.6                  
+    Quote ONE of these two lines and name the outcome and the numerator.
+    'OR = 0.24' is the odds of DEATH in early-treated vs untreated;
+    'OR = 4.22 (95% CI 1.20-16.64)' is the odds of SURVIVAL, which is the
+    direction 'more than doubled survival' is arguing.
+  Fisher late (12 h) vs untreated, p           1                     
+    OR for DEATH, late / untreated             0.8                   
+      95% CI lo                                0.171                 
+      95% CI hi                                3.65                  
+    OR for SURVIVAL, late / untreated  (= 1/OR) 1.25                  
+
+--- adjusted models: does delay survive conditioning on final burden? ---
+  survival: beta delay | log_CFU (per h)       -0.1018               
+  survival: p delay | log_CFU                  0.15                    [ok]
+  survival: beta delay | log_CFU (per min)     -0.001696             
+  survival: beta log_CFU | delay               -2.19                 
+  survival: p log_CFU | delay                  7e-06                 
+  health:   beta delay | log_CFU (per h)       -0.105                  [ok]
+  health:   p delay | log_CFU                  0.024                 
+  health:   beta delay | log_CFU (per min)     -0.00175              
+  health:   beta log_CFU | delay               -1.43                 
+  health:   p log_CFU | delay                  3.8e-17               
+  health (standardised): beta delay            -0.443                
+  health (standardised): beta log_CFU          -1.98                 
+    Read the two outcomes separately -- they do not behave the same way.
+
+--- did the drug reduce burden? ---
+  median log10 CFU, untreated                  5.29                  
+  median log10 CFU, late (>= 9 h)              4.05                  
+  median log10 CFU, early (<= 3 h)             3.77                  
+  Wilcoxon late vs untreated, p                0.00045               
+
+--- delay vs cumulative exposure (Sigma p) ---
+  AIC survival ~ delay                         136.6                 
+  AIC survival ~ Sigma_p                       135.2                 
+  AIC health ~ delay                           486.2                 
+  AIC health ~ Sigma_p                         484.6                 
+  Sigma_p at 50% survival (cells.h)            6900                  
+
+--- burden x time interaction  [beta_(p x t) in the text] ---
+  standardised beta (z_time:z_cfu)             -0.939                  [ok]
+  standardised p    (z_time:z_cfu)             3e-05                   [ok]
+  raw beta (Time:log_CFU)                      -0.05441              
+  F                                            19.6                    [ok]
+  p                                            3e-05                   [ok]
+  censored beta (z_time:z_cfu)                 -3.07                 
+  censored p     (z_time:z_cfu)                5.44e-05              
+    The three scales are not interchangeable: raw is per hour per log10 CFU,
+    standardised is per SD per SD, censored is standardised on the latent
+    scale (larger because it undoes the 0-7 floor/ceiling compression).
+    Quote whichever the text defines, but quote beta, F and p from the SAME fit.
+
+==============================================================================
+SUPPLEMENTARY NOTE S2  Cumulative burden (Sum p) vs time  [figure S2]
+==============================================================================
+  Sum p is a deterministic function of the fitted growth curve, so in a
+  cross-sectional design it carries almost no information beyond sampling
+  time. How strong that is depends on the SCALE, and the note must say which.
+
+  distinct sampling times (n for these r)      9                     
+
+--- correlation of Sum p with time ---
+  r(Time, Sum p)              RAW scale        0.838                   [ok]
+  r(Time, log10(Sum p + 1))   LOG scale        0.985                   [ok]
+  r(integral, trapezoid)      RAW scale        0.985                 
+  r(integral, trapezoid)      LOG scale        0.974                 
+    Figure S2 panels B and C plot log10, so their annotations are the
+    LOG-scale values. The correlation matrix printed by the script is RAW.
+
+--- collinearity in health ~ Time + log10(Sum p + 1) ---
+  VIF (log scale, both terms)                  32.6                    [ok]
+    implied R-squared between predictors = 1 - 1/VIF 0.9693                
+    implied |r|  = sqrt(1 - 1/VIF)             0.9845                
+    VIF that the RAW-scale r would imply       3.36                  
+
+    CONSISTENCY CHECK for the Note S2 text. The VIF comes from a model
+    fitted on the LOG scale, so the correlation it implies is the LOG-scale
+    one (~0.98), not the raw-scale 0.84. Quoting VIF = 32.6 beside r = 0.84
+    is internally inconsistent: r = 0.84 implies VIF = 3.4. Quote either
+    (r = 0.98, VIF = 32.6) on the log scale, or the raw r with its own VIF,
+    and name the scale either way.
+
+--- does Sum p add anything beyond time? ---
+  AIC  health ~ Time                           139.3                 
+  AIC  health ~ log10(Sum p)                   142.9                 
+  AIC  health ~ Time + log10(Sum p)            140.9                 
+  beta Time   | Sum p                          -0.06346              
+  p    Time   | Sum p                          0.05                  
+  residual Sum p -> health, beta               -0.112                
+  residual Sum p -> health, p                  0.76                  
+
+==============================================================================
+ESM cross-checks
+==============================================================================
+  survivor-only K CI lo                        120000                
+  survivor-only K CI hi                        1e+09                 
+  all-larvae K CI lo                           1720000               
+  all-larvae K CI hi                           6530000               
+  ('four orders of magnitude', constraint at 1e9)
+  dead-larva max CFU (~1e8)                    1.5e+08               
+  living-host max CFU                          1100000               
+  profile p_h                                  1.35e-07                [ok]
+  profile p_cfu                                0.738                   [ok]
+  profile p_time                               0.991                   [ok]
+  mean sampling time (h)                       19.9                    [ok]
+  SD sampling time (h)                         10.4                    [ok]
