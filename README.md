@@ -28,17 +28,19 @@ The working directory also contains an `old/` folder of superseded script versio
 
 ## Data
 
-All inputs are comma-separated files in `data/`. The first five drive the infection-dynamics analysis; the last two are the antibiotic-intervention experiment.
+All inputs are comma-separated files in `data/`. The first five drive the infection-dynamics analysis; the last two are the antibiotic-intervention experiment. Note that the two `*survival*.csv` files are **cohort counts per timepoint**, while everything else is **one row per larva**.
 
-| File | Contents |
-|------|----------|
-| `survival.csv` | Per-larva survival status across the infection time course (infected cohort). |
-| `bacterial_burden.csv` | Destructively sampled bacterial burden (CFU per larva) over time, with live/dead status. |
-| `health_assesment.csv` | Per-larva activity and melanization scores; the two components of the composite health index. |
-| `time_to_death.csv` | Recorded time of death for larvae that died. |
-| `control_survival.csv` | Survival of uninfected / vehicle-control larvae. |
-| `bacterial_burden_ab.csv` | Bacterial burden (24 h endpoint, CFU per larva) for the antibiotic-intervention experiment. |
-| `health_assesment_ab.csv` | Antibiotic-intervention data: per-larva time from injection to treatment, survival, activity, and melanization. |
+| File | Grain | Contents |
+|------|-------|----------|
+| `survival.csv` | one row per hour | Infected cohort: `time`, `total`, `dead`, `alive`. Cohort counts, not per-larva records. Drives the Gompertz fit (Fig 2). |
+| `control_survival.csv` | one row per hour | Same four columns for the uninfected / vehicle-control cohort. |
+| `bacterial_burden.csv` | one row per plate | Replicate colony counts (`rep1`–`rep4`) for destructively sampled larvae over the time course, with the `Dilution`, `Volume_ul` and `Buffer_dilution_factor` needed to convert them to CFU per larva. `Countable` marks unreadable plates. Carries **no** live/dead status — that is joined in from `health_assesment.csv`. |
+| `health_assesment.csv` | one row per larva | `activity`, `melanization` and `survival` for the time-course cohort. The first two are the components of the composite health index; `survival` supplies the live/dead status used throughout. |
+| `time_to_death.csv` | one row per larva | Recorded time of death, used only for the post-mortem burden check (Fig S1). |
+| `bacterial_burden_ab.csv` | one row per plate | Replicate colony counts (`rep1`–`rep5`) at the 24 h endpoint of the antibiotic experiment, with the same dilution columns. |
+| `health_assesment_ab.csv` | one row per larva | Antibiotic experiment: `Treatment`, the injection / treatment / sampling clock times, and `Activity`, `Melanization`, `Survival`. The injection-to-treatment delay used in Fig 6D–F is derived from the clock times. |
+
+Some columns are present but unused by the analysis: `Contamination` and `Batch` in `bacterial_burden.csv`, `cocoon_formation` and `total_score` in `health_assesment.csv`, and `Coccoon` in `health_assesment_ab.csv`.
 
 ### The health index
 
@@ -83,19 +85,19 @@ install.packages(c(
   # core / modelling
   "minpack.lm", "dplyr", "tidyr", "tibble", "boot", "MASS", "mgcv", "purrr",
   # plotting
-  "ggplot2", "cowplot", "patchwork", "ggdist", "scales",
+  "ggplot2", "patchwork", "ggdist", "scales",
   # structural equation modelling
-  "lavaan", "blavaan", "lavaanPlot", "semPlot", "brglm2", "tidybayes", "coda",
+  "lavaan", "blavaan", "semPlot", "tidybayes", "coda",
   # causal / DAGs
   "dagitty", "ggdag",
   # time handling and survival
   "lubridate", "stringr", "survival",
   # shape-constrained GAMs and misc. statistics
-  "scam", "broom", "emmeans", "car", "logistf"
+  "scam", "broom", "car", "logistf"
 ))
 ```
 
-`logistf` supplies the penalised (Firth) likelihood used where host health near-perfectly separates survival; `survival` provides `survreg()` for the censored-health robustness check; `coda` is used via `::` when combining MCMC chains; `car` provides `vif()` and `scales` the axis formatters.
+`logistf` supplies the penalised (Firth) likelihood used where host health near-perfectly separates survival; `survival` provides `survreg()` for the censored-health robustness check; `car` provides `vif()` and `scales` the axis formatters. `coda` and `tibble` are needed but never attached: `coda` is called as `coda::is.mcmc()`, and `tibble()` reaches the script through dplyr's re-export. `MASS` **is** attached, and it masks `dplyr::select()` — which is why every `select()` in the script is written as `dplyr::select()`. If you drop `library(MASS)` (only `MASS::dose.p()` is used), those prefixes become optional but must not be removed carelessly.
 
 **Bayesian SEM backend.** `blavaan` fits models via MCMC and requires a sampling backend — either **Stan** (`rstan`) or **JAGS** (`rjags`, which needs a system JAGS install). Set this up following the `blavaan` documentation before running the SEM section; this is the most computationally intensive step.
 
