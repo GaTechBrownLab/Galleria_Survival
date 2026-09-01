@@ -204,6 +204,12 @@ control_surv  <- read.table("data/control_survival.csv", header = T, sep = ",", 
 # Common time sequence used throughout
 time_seq <- seq(0, 36, length.out = 200)
 
+# Discrete time-band palette: a three-way cut of the magma ramp. Figures 3B and
+# 4A-C all use it, so the same variable has one encoding across the paper
+# rather than a continuous colourbar in some panels and three bands in others.
+pal_tband <- setNames(viridisLite::magma(3, direction = -1, begin = 0.25, end = 0.80),
+                      c("Early", "Mid", "Late"))
+
 #===============================================================================
 # FIGURE 1: The five candidate causal structures (Introduction)
 #-------------------------------------------------------------------------------
@@ -486,8 +492,17 @@ burden_tidy_time <- burden %>%
   filter(!is.na(cfu)) %>%
   # as.numeric(): scale() otherwise returns 1-column matrices, which propagate
   # into lavaan and the plotting code as matrix columns.
-  mutate(scaled_time         = as.numeric(scale(Time)),
-         scaled_health       = as.numeric(scale(activity + melanization)),
+  mutate(alive               = as.integer(status == "Alive"),
+         # Sampling-time tertiles. Defined once here so Figures 3B and 4A-C all
+         # encode time the same way; with nine sampling times these are clean
+         # splits (Early 4-12 h, Mid 16-24 h, Late 28-36 h).
+         t_band              = cut(Time, breaks = quantile(Time, c(0, 1/3, 2/3, 1),
+                                                           na.rm = TRUE),
+                                   include.lowest = TRUE,
+                                   labels = c("Early", "Mid", "Late")),
+         health_combined     = activity + melanization,   # 0-7, higher = healthier
+         scaled_time         = as.numeric(scale(Time)),
+         scaled_health       = as.numeric(scale(health_combined)),
          scaled_activity     = as.numeric(scale(activity)),
          scaled_melanization = as.numeric(scale(melanization)),
          scaled_cfu          = as.numeric(scale(log_CFU)),
@@ -657,7 +672,7 @@ cat("  Survivors only:  "); print(signif(ci_K_alive, 3))
 line_colors <- c("Total population" = "#ee9b43", "Alive only" = "#19798b")
 line_types  <- c("Total population" = "solid", "Alive only" = "dashed")
 
-figure3 <- ggplot(burden_tidy_time, aes(x = Time, y = log_CFU)) +
+p3A <- ggplot(burden_tidy_time, aes(x = Time, y = log_CFU)) +
   geom_jitter(aes(fill = status), size = 3, shape = 21, alpha = 0.6, color = "black") +
   # Total population fit
   geom_ribbon(data = pred_time_full, aes(x = Time, ymin = lower, ymax = upper),
@@ -696,8 +711,95 @@ figure3 <- ggplot(burden_tidy_time, aes(x = Time, y = log_CFU)) +
     linetype = guide_legend(order = 2)
   )
 
-ggsave("figures/figure3.pdf",  # >>> Manuscript Figure 3 (logistic growth)
-       plot = figure3, width = 6, height = 5, units = "in", dpi = 300)
+# ----------------------------------------------------------------------------
+# Panel B: survival against pathogen density, stratified by sampling time
+# ----------------------------------------------------------------------------
+# The transpose of Figure S1's diagnostic panel: there survival is plotted
+# against time at three fixed burdens, here against burden at three fixed times.
+# Both read off the same fit (m_cond), so the beta_t quoted in the two captions
+# is deliberately the same number.
+#
+#   solid  = logit P(alive) ~ Time + log_CFU     the tested model
+#   dashed = logit P(alive) ~ log_CFU            the null implied by burden-driven
+#                                                mortality: time adds nothing
+#                                                once density is known. It has no
+#                                                time term, so the three bands
+#                                                collapse onto ONE curve -- drawn
+#                                                once, in grey.
+#
+# The vertical separation between the solid curves is the rejection of
+# s _||_ t | p. Each curve is clipped to the log10 CFU range actually observed
+# within its own time band -- without that the early-time sigmoid is drawn
+# across burdens no early larva ever reached, which is more misleading here
+# than in Figure 4C because the curves are sigmoid rather than straight.
+
+m_cond   <- glm(alive ~ Time + log_CFU, data = burden_tidy_time, family = binomial)
+m_cond_null <- glm(alive ~ log_CFU,     data = burden_tidy_time, family = binomial)
+
+# Tertile bands, and the time at which each band's curve is drawn. The tertile
+# medians coincide exactly with the 15th / 50th / 85th percentiles of sampling
+# time here (8, 20, 32 h), so the caption may quote either.
+dat_fig3b <- burden_tidy_time
+
+band3 <- dat_fig3b %>%
+  group_by(t_band) %>%
+  summarise(Time = median(Time),
+            lo   = min(log_CFU), hi = max(log_CFU), .groups = "drop")
+
+pred_3B <- purrr::map_dfr(seq_len(nrow(band3)), function(i) {
+  nd <- data.frame(log_CFU = seq(band3$lo[i], band3$hi[i], length.out = 200),
+                   Time    = band3$Time[i])
+  nd$fit    <- predict(m_cond, newdata = nd, type = "response")
+  nd$t_band <- band3$t_band[i]
+  nd
+})
+
+# The null has no time term, so its three band-curves are identical. Drawing it
+# once, in grey, across the full observed range says that plainly: under
+# burden-driven mortality there is ONE curve, and the tested model has three.
+null_3B <- data.frame(
+  log_CFU = seq(min(burden_tidy_time$log_CFU), max(burden_tidy_time$log_CFU),
+                length.out = 200))
+null_3B$fit <- predict(m_cond_null, newdata = null_3B, type = "response")
+
+p3B <- ggplot(pred_3B, aes(x = log_CFU, y = fit, colour = t_band)) +
+  geom_jitter(data = dat_fig3b,
+              aes(x = log_CFU, y = alive, colour = t_band),
+              inherit.aes = FALSE, height = 0.035, width = 0.05,
+              alpha = 0.6, size = 2.5) +
+  # The null gets its own linetype legend entry: previously a reader had to
+  # reach the caption to learn what the grey reference curve was.
+  geom_line(data = null_3B,
+            aes(x = log_CFU, y = fit, linetype = "Burden-driven null"),
+            inherit.aes = FALSE, linewidth = 0.8, colour = "grey45") +
+  geom_line(aes(linetype = "Time + burden"), linewidth = 1.1) +
+  scale_colour_manual(values = pal_tband, name = "Time") +
+  scale_linetype_manual(values = c("Time + burden" = "solid",
+                                   "Burden-driven null" = "dashed"),
+                        name = NULL,
+                        breaks = c("Time + burden", "Burden-driven null")) +
+  # The curves are fitted probabilities on a continuous 0-1 scale; the points
+  # are the observed binary outcome. Label both rather than conflating them.
+  scale_y_continuous(breaks = c(0, 0.5, 1),
+                     labels = c("0 (Dead)", "0.5", "1 (Alive)")) +
+  coord_cartesian(ylim = c(-0.12, 1.12)) +
+  labs(x = bquote(log[10](CFU)), y = "Predicted P(survival)") +
+  guides(colour   = guide_legend(order = 1),
+         linetype = guide_legend(order = 2,
+                                 override.aes = list(colour = c("grey20", "grey45")))) +
+  mytheme +
+  theme(legend.position = c(0.17, 0.36),
+        legend.background = element_rect(fill = alpha("white", 0.8), color = NA),
+        legend.title = element_text(size = 14),
+        legend.text  = element_text(size = 12),
+        legend.spacing.y = unit(0.05, "cm"))
+
+figure3 <- (p3A | p3B) +
+  plot_annotation(tag_levels = "A") &
+  theme(plot.tag = element_text(face = "bold", size = 14))
+
+ggsave("figures/figure3.pdf",  # >>> Manuscript Figure 3 (logistic growth + s vs p | t)
+       plot = figure3, width = 11, height = 5, units = "in", dpi = 300)
 
 
 # Linear-scale version (diagnostic; not in the manuscript)
@@ -795,7 +897,7 @@ cat("  Linear wins:", sum(winners_a == 3), "(", round(100 * mean(winners_a == 3)
 
 #-------------------------------------------------------------------------------
 # CFU "time since death"
-# Supplementary figure S1
+# Supplementary figure S2
 #-------------------------------------------------------------------------------
 
 # Calculate time since death
@@ -829,7 +931,7 @@ p_postmortem <- ggplot(burden_tidy_death %>% filter(status == "Dead"),
 print(p_postmortem)
 
 # Save
-ggsave("figures/figureS1.pdf",  # >>> Supplementary Figure S1 (post-mortem burden)
+ggsave("figures/figureS2.pdf",  # >>> Supplementary Figure S2 (post-mortem burden)
        plot = p_postmortem, width = 5.3, height = 5, units = "in", dpi = 300)
 
 # Test for post-mortem growth
@@ -1124,27 +1226,27 @@ cfu_seq_mel <- data.frame(log_CFU = seq(min(burden_tidy_time$log_CFU),
 cfu_seq_mel$smoothed_melanization <- predict(gam_cfu_mel, newdata = cfu_seq_mel)
 
 
+# Time is encoded as the same three bands as panel C. It was previously a
+# continuous colourbar here, which put two encodings of one variable in one
+# figure and made the panels harder to read against each other.
 p4A <- ggplot(burden_tidy_time, aes(x = log_CFU, y = activity)) +
-  geom_jitter(aes(color = Time), size = 2.5, width = 0, height = 0.12, alpha = 0.85) +
+  geom_jitter(aes(color = t_band), size = 2.5, width = 0, height = 0.12, alpha = 0.85) +
   geom_line(data = cfu_seq_act, aes(x = log_CFU, y = smoothed_activity),
             color = "black", linewidth = 0.9, inherit.aes = FALSE) +
-  scale_color_viridis_c(option = "magma", direction = -1, end = 0.92,
-                        name = "Time") +
+  scale_color_manual(values = pal_tband, name = "Time") +
   labs(x = expression(log[10](CFU)), y = "Activity score") +
   mytheme +
-  theme(legend.position = c(0.85, 0.75),
+  theme(legend.position = c(0.83, 0.78),
         legend.background = element_rect(fill = alpha("white", 0.8), color = NA),
-        legend.key.height = unit(0.5, "cm"),
         legend.title = element_text(size = 16)
   )
 
 # Fig 4B: melanization
 p4B <- ggplot(burden_tidy_time, aes(x = log_CFU, y = melanization)) +
-  geom_jitter(aes(color = Time), size = 2.5, width = 0, height = 0.12, alpha = 0.85) +
+  geom_jitter(aes(color = t_band), size = 2.5, width = 0, height = 0.12, alpha = 0.85) +
   geom_line(data = cfu_seq_mel, aes(x = log_CFU, y = smoothed_melanization),
             color = "black", linewidth = 0.9, inherit.aes = FALSE) +
-  scale_color_viridis_c(option = "magma", direction = -1, end = 0.92,
-                        name = "Time") +
+  scale_color_manual(values = pal_tband, name = "Time") +
   labs(x = expression(log[10](CFU)), y = "Melanization score") +
   mytheme +
   theme(legend.position = "none")  # shares the legend with p4A visually
@@ -1152,7 +1254,7 @@ p4B <- ggplot(burden_tidy_time, aes(x = log_CFU, y = melanization)) +
 # ----------------------------------------------------------------------------
 # Panel C: T50 ordering
 # ----------------------------------------------------------------------------
-p4C <- ggplot(curves, aes(x = time, y = p, color = metric)) +
+p4D <- ggplot(curves, aes(x = time, y = p, color = metric)) +
   geom_line(linewidth = 1.2) +
   geom_point(data = obs_props,
              aes(x = time, y = p, color = metric),
@@ -1164,8 +1266,11 @@ p4C <- ggplot(curves, aes(x = time, y = p, color = metric)) +
   geom_hline(yintercept = 0.5, linetype = "dotted", alpha = 0.4) +
   scale_color_manual(values = palette_T50, name = NULL,
                      limits = c("AT50", "MT50", "LT50")) +
-  scale_y_continuous(limits = c(0, 1.02), breaks = seq(0, 1, 0.25)) +
-  scale_x_continuous(limits = c(0, 36), breaks = seq(0, 36, 6)) +
+  scale_y_continuous(breaks = seq(0, 1, 0.25)) +
+  scale_x_continuous(breaks = seq(0, 36, 6)) +
+  # coord_cartesian, not scale limits: scale_*_continuous(limits =) DELETES data
+  # outside the range, and the dodge pushes the t = 36 points to 36.3.
+  coord_cartesian(xlim = c(0, 36), ylim = c(0, 1.02)) +
   labs(x = "Time (hrs)", y = "Proportion") +
   mytheme +
   theme(legend.position = c(0.8, 0.8),
@@ -1173,27 +1278,127 @@ p4C <- ggplot(curves, aes(x = time, y = p, color = metric)) +
         legend.text = element_text(size = 16))
 
 # ----------------------------------------------------------------------------
+# Panel C: health against burden, stratified by time
+# ----------------------------------------------------------------------------
+# The transpose of Figure S3D. There the burden level is held fixed and health
+# is plotted against time; here time is held fixed and health is plotted against
+# burden. Both are read off the same fit, m_hp (= m_D in the Figure S4 section).
+#
+#   solid  = h ~ Time + log_CFU        the tested model
+#   dashed = h ~ Time                  the null, h _||_ p | t
+#
+# Sloping solid lines against flat dashed ones are the rejection; the vertical
+# offset between the three bands is the memory -- at the same burden, larvae
+# sampled later are in worse condition.
+#
+# NOTE ON THE MODEL. Time enters linearly. The manuscript sentence for this
+# panel should therefore read "adjusting for time since infection", NOT
+# "allowing flexibility for the effect of time" -- that phrasing describes
+# s(Time), which is not what is fitted here. The flexible-conditioning version
+# of the RECIPROCAL test does exist (gam_health_flex, below), and that is where
+# the "spline-adjusted" wording belongs.
+
+# Points are coloured by time tertile; each line is drawn at the MEDIAN time
+# within its own tertile, so lines and points share one three-level scale
+# rather than mixing tertile bands with unrelated percentiles.
+dat_fig4d <- burden_tidy_time %>%
+  filter(!is.na(health_combined), !is.na(log_CFU))
+
+m_hp      <- lm(health_combined ~ Time + log_CFU, data = dat_fig4d)  # tested
+m_hp_null <- lm(health_combined ~ Time,           data = dat_fig4d)  # h _||_ p | t
+
+band_time <- dat_fig4d %>%
+  group_by(t_band) %>%
+  summarise(Time = median(Time),
+            lo   = min(log_CFU), hi = max(log_CFU), .groups = "drop")
+
+# Each line is clipped to the burden range observed WITHIN its own band. Early
+# larvae never reached high burden and late larvae never sat at low burden, so
+# an unclipped line extrapolates a long way past any data in its band.
+pred_4C <- purrr::map_dfr(seq_len(nrow(band_time)), function(i) {
+  nd <- data.frame(log_CFU = seq(band_time$lo[i], band_time$hi[i],
+                                 length.out = 100),
+                   Time    = band_time$Time[i])
+  nd$fit    <- predict(m_hp,      newdata = nd)
+  nd$null   <- predict(m_hp_null, newdata = nd)
+  nd$t_band <- band_time$t_band[i]
+  nd
+})
+
+# Draw each line only where its OWN prediction is inside the observable 0-7
+# range. Early larvae sit at the h = 7 ceiling, so a common-slope model predicts
+# above the maximum possible score at low density for early times; without this
+# the Early line enters and exits through the panel edge and reads as a
+# rendering fault rather than a fit. Filtering the two lines separately matters:
+# filtering both on `fit` would also truncate Early's null, which is in range
+# across the whole band. The excursion itself is the bounded-index attenuation
+# the ESM already describes, not something a plotting choice can remove.
+pred_4C_fit  <- pred_4C[pred_4C$fit  >= 0 & pred_4C$fit  <= 7, , drop = FALSE]
+pred_4C_null <- pred_4C[pred_4C$null >= 0 & pred_4C$null <= 7, , drop = FALSE]
+
+# WHAT THE READER SHOULD COMPARE. Each band's dashed null is FLAT: under
+# h _||_ p | t, health depends on time alone. The solid line for the same band
+# SLOPES. The rejection is therefore slope-versus-flat, not the size of any gap
+# between the two lines -- a fitted line and a flat line at the same conditional
+# mean must cross once, so the gap is zero somewhere in every band and carries
+# no meaning. Do not describe this panel as "the gap between the curves".
+p4C <- ggplot(pred_4C_fit, aes(x = log_CFU, y = fit, colour = t_band)) +
+  geom_point(data = dat_fig4d,
+             aes(x = log_CFU, y = health_combined, colour = t_band),
+             inherit.aes = FALSE, alpha = 0.6, size = 2.5) +
+  geom_line(data = pred_4C_null,
+            aes(x = log_CFU, y = null, colour = t_band,
+                linetype = "No burden effect (h ~ t)"),
+            linewidth = 0.7, alpha = 0.75) +
+  geom_line(aes(linetype = "Time + burden"), linewidth = 1.1) +
+  scale_colour_manual(values = pal_tband, name = "Time") +
+  scale_linetype_manual(values = c("Time + burden" = "solid",
+                                   "No burden effect (h ~ t)" = "dashed"),
+                        name = NULL,
+                        breaks = c("Time + burden", "No burden effect (h ~ t)")) +
+  scale_y_continuous(breaks = seq(0, 7, 1)) +
+  coord_cartesian(ylim = c(0, 7)) +
+  labs(x = expression(log[10](CFU)), y = "Health score (h)") +
+  guides(colour   = guide_legend(order = 1),
+         linetype = guide_legend(order = 2,
+                                 override.aes = list(colour = "grey30"))) +
+  mytheme +
+  # bottom-left is the one clear corner: low burden and low health is empty
+  theme(legend.position = c(0.19, 0.31),
+        legend.background = element_rect(fill = alpha("white", 0.85), color = NA),
+        legend.title = element_text(size = 13),
+        legend.text  = element_text(size = 11),
+        legend.key.size = unit(0.45, "cm"),
+        legend.spacing.y = unit(0.02, "cm"))
+
+# ----------------------------------------------------------------------------
 # Compose Figure 4
 # ----------------------------------------------------------------------------
-figure4 <- (p4A | p4B | p4C) +
+# Object names match the letter each panel renders as:
+#   p4A activity | p4B melanization | p4C health vs burden | p4D T50 ordering
+
+# Switched C and D 
+figure4 <- (p4A | p4B) / (p4C | p4D) +
   plot_annotation(tag_levels = "A") &
   theme(plot.tag = element_text(face = "bold", size = 14))
 
-ggsave("figures/figure4.pdf",  # >>> Manuscript Figure 4 (activity/melanization + T50)
-       plot = figure4, width = 13, height = 4.5, units = "in", dpi = 300)
+# One-row alternative, if the four panels are wanted side by side:
+# figure4 <- (p4A | p4B | p4C | p4D) + plot_annotation(tag_levels = "A") &
+#   theme(plot.tag = element_text(face = "bold", size = 14))
+# ggsave(..., width = 17, height = 4.5, ...)
+
+ggsave("figures/figure4.pdf",  # >>> Manuscript Figure 4 (activity/melanization + T50 + h vs p | t)
+       plot = figure4, width = 11, height = 9, units = "in", dpi = 300)
 
 
 # =============================================================================
 # Causal Analysis
 # =============================================================================
 
-# Create combined health metric
-
+# health_combined is built in the prep pipeline (Figure 4C needs it earlier);
+# only its standardised form is added here.
 burden_tidy_time <- burden_tidy_time %>%
-  mutate(
-    health_combined = activity + melanization,
-    scaled_health_combined = scale(health_combined)[,1]
-  )
+  mutate(scaled_health_combined = as.numeric(scale(health_combined)))
 
 # Does time still predict host condition once burden may act non-linearly?
 # Fitted once and reused, so the parametric p, the edf and the deviance
@@ -1206,8 +1411,8 @@ gam_health_flex <- gam(health_combined ~ Time + s(log_CFU), data = burden_tidy_t
 # Encodes the candidate DAGs underlying Supplementary Figures S3 and S4 and
 # prints the testable conditional independencies derived by d-separation. These
 # are exactly the implications tested by regression downstream:
-#   Fig S3: m_cond            (t -> p -> s implies t _||_ s | p ; etc.)
-#   Fig S4: m_D, m_E, m_F, m_F_supp
+#   Fig S1: m_cond            (t -> p -> s implies t _||_ s | p ; etc.)
+#   Fig S3: m_D, m_E, m_F, m_F_supp
 # Reference: Textor et al. 2016 (dagitty). dagitty is loaded above.
 #==============================================================================
 
@@ -1231,17 +1436,18 @@ dagi4_bottleneck  <- dagitty("dag { t -> p ; t -> h ; p -> h ; h -> s }") # S4C:
 
 cat("\n=== Implied conditional independencies: 4-node models (Figure S4) ===\n")
 cat("\nS4A  t -> p -> h -> s  (instantaneous damage):\n")
-print(impliedConditionalIndependencies(dagi4_pmed_health))  # includes t _||_ h | p  (Fig S4D)
+print(impliedConditionalIndependencies(dagi4_pmed_health))  # includes t _||_ h | p  (Fig S3D)
 cat("\nS4B  t -> h -> p -> s  (immune collapse):\n")
-print(impliedConditionalIndependencies(dagi4_collapse))     # includes h _||_ s | p  (Fig S4E)
+print(impliedConditionalIndependencies(dagi4_collapse))     # includes h _||_ s | p  (Fig S3E)
 cat("\nS4C  t -> p ; t -> h ; p -> h ; h -> s  (supported):\n")
-print(impliedConditionalIndependencies(dagi4_bottleneck))   # s _||_ t | h and s _||_ p | h  (Fig S4F)
+print(impliedConditionalIndependencies(dagi4_bottleneck))   # s _||_ t | h and s _||_ p | h  (Fig S3F)
 
 #==============================================================================
-# FIGURE S3: m(p) mapping + 3-node DAGs + diagnostic plots
+# FIGURE S1: m(p) mapping + 3-node DAGs + diagnostic plots
 # Panel A:   implied m(p) mapping with its pole at K
 # Panels B-D: DAGs for alternative causal models (t, p, s)
 # Panels E-F: diagnostic plots falsifying models B and C
+# (manuscript Figure S1 -- numbered by float order, see the mapping note below)
 #==============================================================================
 
 # --- DAG panels ---
@@ -1257,6 +1463,9 @@ dag_C <- draw_dag(c("t_p","p_s","t_s"), drop_nodes = "h",
 # Data prep
 # ----------------------------------------------------------------------------
 
+fig3_time_labels <- c("0–12h", "12–24h",
+                     sprintf("24–%.0fh", max(burden_tidy_time$Time, na.rm = TRUE)))
+
 dat_fig3 <- burden_tidy_time %>%
   filter(!is.na(status), !is.na(log_CFU)) %>%
   mutate(
@@ -1265,17 +1474,22 @@ dat_fig3 <- burden_tidy_time %>%
                    breaks = quantile(log_CFU, c(0, 1/3, 2/3, 1), na.rm = TRUE),
                    labels = c("Low", "Medium", "High"),
                    include.lowest = TRUE),
+    # Labels derived from the data, not hard-coded: the analysis window closes
+    # at 36 h (the 48 h sample is excluded upstream), so a literal "24-48h"
+    # label described a range the top bin never contains.
     time_bin = cut(Time,
-                   breaks = c(-0.01, 12, 24, 48),
-                   labels = c("0–12h", "12–24h", "24–48h"))
+                   breaks = c(-0.01, 12, 24, max(Time, na.rm = TRUE)),
+                   labels = fig3_time_labels)
   )
 
 
 # ----------------------------------------------------------------------------
 # Single additive logistic GLM — matches the test reported (β_Time, β_logCFU)
 # ----------------------------------------------------------------------------
-m_cond <- glm(alive ~ Time + log_CFU, data = dat_fig3, family = binomial)
-cat("\n=== Conditional independence test, 3-node (Figure S3E,F) ===\n")
+# m_cond is fitted in the Figure 3B block and reused here: dat_fig3 is the same
+# set of rows, and Figure 3B and this panel must report the same coefficients.
+stopifnot(nrow(dat_fig3) == nrow(burden_tidy_time))
+cat("\n=== Conditional independence test, 3-node (Figure S1E,F) ===\n")
 print(summary(m_cond))  # β_Time and β_logCFU are the reported test statistics
 
 # ----------------------------------------------------------------------------
@@ -1314,12 +1528,12 @@ print(logistf(survival ~ melanization + scaled_cfu, data = burden_tidy_time))
 cfu_levels  <- quantile(dat_fig3$log_CFU, c(0.15, 0.5, 0.85), na.rm = TRUE)
 time_levels <- c(6, 18, 30)
 names(cfu_levels)  <- c("Low", "Medium", "High")
-names(time_levels) <- c("0–12h", "12–24h", "24–48h")
+names(time_levels) <- fig3_time_labels
 
 
 # ─── Null prediction for Panel E: what we'd see if S3B (t ⊥ s | p) held ───
 # Under S3B, survival depends only on log_CFU. Fit that null model.
-m_null_D <- glm(survival ~ log_CFU, data = burden_tidy_time, family = binomial)
+m_null_D <- m_cond_null   # same fit as Figure 3B's dashed null
 
 null_D <- purrr::map_dfr(names(cfu_levels), function(lbl) {
   nd <- data.frame(Time = c(0, 36), log_CFU = cfu_levels[[lbl]])
@@ -1367,9 +1581,9 @@ p3D <- ggplot() +
             aes(x = Time, y = fit, color = bin),
             linewidth = 1.1) +
   scale_fill_manual(values = bin_palette, guide = "none") +
-  scale_y_continuous(breaks = c(0, 1), labels = c("Dead", "Alive"),
-                     limits = c(-0.12, 1.12)) +
-  scale_x_continuous(limits = c(0, 36), breaks = seq(0, 36, 6)) +
+  scale_y_continuous(breaks = c(0, 1), labels = c("Dead", "Alive")) +
+  scale_x_continuous(breaks = seq(0, 36, 6)) +
+  coord_cartesian(xlim = c(0, 36), ylim = c(-0.12, 1.12)) +   # see p4D
   labs(x = bquote("Time (hrs, "*italic(t)*")"), y = bquote("Survival ("*italic(s)*")"))+
   mytheme +
   theme(legend.position = c(0.2, 0.35), , legend.title = element_text(size = 16))+
@@ -1388,11 +1602,13 @@ pred_E <- purrr::map_dfr(names(time_levels), function(lbl) {
   nd$fit <- plogis(p$fit)
   nd$lwr <- plogis(p$fit - 1.96 * p$se.fit)
   nd$upr <- plogis(p$fit + 1.96 * p$se.fit)
-  nd$bin <- factor(lbl, levels = c("0–12h", "12–24h", "24–48h"))
+  nd$bin <- factor(lbl, levels = fig3_time_labels)
   nd
 })
 
-time_palette <- c("0–12h" = "#19798b", "12–24h" = "#ee9b43", "24–48h" = "#b80422")
+# Named from fig3_time_labels, not hard-coded: a level list that disagrees with
+# the data's labels turns the unmatched band into NA and paints it grey.
+time_palette <- setNames(c("#19798b", "#ee9b43", "#b80422"), fig3_time_labels)
 
 p3E <- ggplot() +
   geom_jitter(data = dat_fig3,
@@ -1404,8 +1620,8 @@ p3E <- ggplot() +
             aes(x = log_CFU, y = fit, color = bin),
             linewidth = 1.1) +
   scale_fill_manual(values = time_palette, guide = "none") +
-  scale_y_continuous(breaks = c(0, 1), labels = c("Dead", "Alive"),
-                     limits = c(-0.12, 1.12)) +
+  scale_y_continuous(breaks = c(0, 1), labels = c("Dead", "Alive")) +
+  coord_cartesian(ylim = c(-0.12, 1.12)) +                    # see p4D
   labs(x = bquote(log[10]*"(CFU), "*italic(p)), y = NULL) +
   mytheme+
   theme(legend.position = c(0.2, 0.35),
@@ -1426,17 +1642,17 @@ p3E <- ggplot() +
 
 row1 <- (pS3A | dag_A | dag_B | dag_C) + plot_layout(widths = c(1.4, 1, 1, 1))
 row2 <- (p3D | p3E)
-figureS3 <- row1 / row2 + plot_layout(heights = c(1, 1.9)) +
+figureS1 <- row1 / row2 + plot_layout(heights = c(1, 1.9)) +
   plot_annotation(tag_levels = "A") &
   theme(plot.tag = element_text(face = "bold", size = 14))
 
 
-ggsave("figures/figureS3.pdf",  # >>> Supplementary Figure S3 (m(p) mapping + 3-node pathogen DAGs + diagnostics)
-       plot = figureS3, width = 12, height = 9, units = "in", dpi = 300)
+ggsave("figures/figureS1.pdf",  # >>> Supplementary Figure S1 (m(p) mapping + 3-node pathogen DAGs + diagnostics)
+       plot = figureS1, width = 12, height = 9, units = "in", dpi = 300)
 
 
 # ============================================================================
-# FIGURE S4: Health-mediated causal analysis
+# FIGURE S3: Health-mediated causal analysis
 # A,B,C: DAGs (instantaneous damage; immune collapse; cumulative damage)
 # D: rejects A via t ⊥ h | p
 # E: rejects B via h ⊥ s | p
@@ -1514,8 +1730,11 @@ p5D <- ggplot() +
   geom_line(data = null_D, aes(x = Time, y = fit, color = bin),
             linetype = "dashed", linewidth = 0.7, alpha = 0.6) +
   geom_line(data = pred_D, aes(x = Time, y = fit, color = bin), linewidth = 1.1) +
-  scale_x_continuous(limits = c(0, 36), breaks = seq(0, 36, 6)) +
-  scale_y_continuous(limits = c(0, 7)) + 
+  scale_x_continuous(breaks = seq(0, 36, 6)) +
+  # 63 of 86 larvae sit exactly on h = 0 or h = 7, and geom_jitter(height = 0.1)
+  # pushes them outside a hard limit, where ggplot DELETES them. Clip the view
+  # instead.
+  coord_cartesian(xlim = c(0, 36), ylim = c(0, 7)) +
   labs(x = bquote("Time (hrs, "*italic(t)*")"), y = bquote("Health score ("*italic(h)*")")) +
   mytheme+
   scale_color_manual(values = pal_cfu, name = expression(log[10](CFU)))+
@@ -1551,8 +1770,8 @@ p5E <- ggplot() +
   geom_line(data = null_E, aes(x = h, y = fit, color = bin),
             linetype = "dashed", linewidth = 0.7, alpha = 0.6) +
   geom_line(data = pred_E, aes(x = h, y = fit, color = bin), linewidth = 1.1) +
-  scale_y_continuous(breaks = c(0,1), labels = c("Dead","Alive"), limits = c(-0.12, 1.12)) +
-  scale_x_continuous(limits = c(0, 7)) +
+  scale_y_continuous(breaks = c(0,1), labels = c("Dead","Alive")) +
+  coord_cartesian(xlim = c(0, 7), ylim = c(-0.12, 1.12)) +    # see p5D
   labs(x = bquote("Health score ("*italic(h)*")"), y = bquote("Survival ("*italic(s)*")")) + mytheme +
   scale_color_manual(values = pal_cfu, name = expression(log[10](CFU)))+
   theme(legend.position = c(0.8, 0.32), legend.title = element_text(size = 14), legend.text = element_text(size = 14))
@@ -1587,8 +1806,9 @@ p5F <- ggplot() +
   geom_line(data = null_F, aes(x = Time, y = fit, color = bin),
             linetype = "dashed", linewidth = 0.7, alpha = 0.6) +
   geom_line(data = pred_F, aes(x = Time, y = fit, color = bin), linewidth = 1.1) +
-  scale_y_continuous(breaks = c(0,1), labels = c("Dead","Alive"), limits = c(-0.12, 1.12)) +
-  scale_x_continuous(limits = c(0, 36), breaks = seq(0, 36, 6)) +
+  scale_y_continuous(breaks = c(0,1), labels = c("Dead","Alive")) +
+  scale_x_continuous(breaks = seq(0, 36, 6)) +
+  coord_cartesian(xlim = c(0, 36), ylim = c(-0.12, 1.12)) +   # see p5D
   labs(x = bquote("Time (hrs, "*italic(t)*")"), y = bquote("Survival ("*italic(s)*")")) +
   mytheme+
   theme(legend.position = c(0.2, 0.32), legend.title = element_text(size = 14), legend.text = element_text(size = 14))+
@@ -1621,13 +1841,13 @@ design <- "
 ABC
 DEF
 "
-figureS4 <- dag5_A + dag5_B + dag5_C + p5D + p5E + p5F +
+figureS3 <- dag5_A + dag5_B + dag5_C + p5D + p5E + p5F +
   plot_layout(design = design, heights = c(1, 1.4)) +
   plot_annotation(tag_levels = "A") &
   theme(plot.tag = element_text(face = "bold", size = 14))
 
-ggsave("figures/figureS4.pdf",  # >>> Supplementary Figure S4 (4-node health DAGs + diagnostics)
-       plot = figureS4, width = 15, height = 8, dpi = 300)
+ggsave("figures/figureS3.pdf",  # >>> Supplementary Figure S3 (4-node health DAGs + diagnostics)
+       plot = figureS3, width = 15, height = 8, dpi = 300)
 
 # -----------------------------------------------------------------------------
 # Sensitivity analysis
@@ -2054,7 +2274,7 @@ cat("  Trapezoidal method: r =", round(cor_matrix["Time", "cum_burden_trapezoid"
 cat("  Discrete method:    r =", round(cor_matrix["Time", "cum_burden_discrete"], 4), "\n")
 
 #-------------------------------------------------------------------------------
-# FIGURE S2: Comparison of cumulative burden estimation methods
+# FIGURE S4: Comparison of cumulative burden estimation methods
 #-------------------------------------------------------------------------------
 
 # Panel A: All three methods vs time
@@ -2159,9 +2379,8 @@ figure_cumulative_supp <- (pA_supp | pB_supp) / (pC_supp | pD_supp) +
   plot_annotation(tag_levels = "A") &
   theme(plot.tag = element_text(face = "bold", size = 14))
 
-print(figure_cumulative_supp)
 
-ggsave("figures/figureS2.pdf",  # >>> Supplementary Figure S2 (cumulative-burden methods + collinearity)
+ggsave("figures/figureS4.pdf",  # >>> Supplementary Figure S4 (cumulative-burden methods + collinearity)
        plot = figure_cumulative_supp, width = 10, height = 9.2, dpi = 300)
 
 #-------------------------------------------------------------------------------
@@ -3058,7 +3277,21 @@ mn("n, antibiotic cohort (scored)",       nrow(expdata_filled), 160, 0)
 mn("n, antibiotic cohort (plated)",       nrow(burden_tidy_ab), NA, 0)
 mn("n, CIP-treated with a recorded delay",nrow(dose), 100, 0)
 cat("  Health index = activity + melanization, both RAW (higher = healthier).\n")
-cat("  Standardisation is applied after filter(Time < 37).\n")
+cat("  The 48 h sample is excluded at the TOP of the data-preparation pipeline\n")
+cat("  (filter(Time < 37) on the raw burden table), so the 4-36 h window and\n")
+cat("  n = 86 apply to EVERY analysis in the paper -- the conditional-\n")
+cat("  independence tests, the T50 fits, the GAMs and the SEM alike. It is not\n")
+cat("  a standardisation choice; standardisation merely happens after it.\n")
+cat("  Maximum Time in each analysis frame (all should read 36):\n")
+for (nm in c("burden_tidy_time", "dat_fig3", "dat_fig3b", "dat_fig4d",
+             "dat_fig5", "dat_cs", "dat_fig5_mel")) {
+  d  <- get(nm)
+  tv <- if ("Time" %in% names(d)) d$Time else d$time
+  cat(sprintf("    %-18s n = %3d   max Time = %2.0f h\n", nm, nrow(d), max(tv, na.rm = TRUE)))
+}
+cat(sprintf("    %-18s n = %3d   max Time = %2.0f h  (survivors only)\n",
+            "burden_tidy_alive", nrow(burden_tidy_alive),
+            max(burden_tidy_alive$Time, na.rm = TRUE)))
 
 
 mn_sec("ABSTRACT")
@@ -3143,7 +3376,33 @@ mn_sub("t _||_ h | p   (rejects instantaneous damage)  [m_D]")
 mn("beta_Time",                  cf(m_D, "Time"),     -0.17)
 mn("p_Time",                     pv(m_D, "Time"),      2.1e-6, 2)
 mn("beta_logCFU",                cf(m_D, "log_CFU"),  -0.658)
+mn("  p_logCFU",                 pv(m_D, "log_CFU"),   0.002, 1)
 mn("R-squared",                  summary(m_D)$r.squared, 0.75, 2)
+
+# Figure 4C plots this same fit transposed (h against p at three fixed times),
+# so its caption numbers must be these. m_hp is refitted on the panel's own
+# frame; if the two ever disagree the panel and the text have drifted apart.
+mn_sub("figure 4C caption  [same fit, plotted h vs p at fixed t]")
+mn("beta_p per log10 CFU",       cf(m_hp, "log_CFU"),  -0.66, 2)
+mn("p_p",                        pv(m_hp, "log_CFU"),   0.002, 1)
+mn("beta_Time (same model)",     cf(m_hp, "Time"),      NA, 4)
+mn("agrees with m_D to 10 dp?",
+   as.numeric(isTRUE(all.equal(unname(coef(m_hp)), unname(coef(m_D)),
+                               tolerance = 1e-10))), 1, 0)
+mn_lt("panel C null rejected: p_p < 0.05", pv(m_hp, "log_CFU"), 0.05)
+cat("    Panel C reads slope-versus-flat, NOT gap. Each band's dashed null is\n")
+cat("    flat because under h _||_ p | t health depends on time alone; the solid\n")
+cat("    line for the same band slopes. A fitted line and a flat line at the same\n")
+cat("    conditional mean cross exactly once, so the gap between them is zero\n")
+cat("    somewhere in every band and means nothing. Describe the rejection as\n")
+cat("    the solid lines sloping while the nulls do not.\n")
+cat("    (Figure 3B is the opposite case: there the null is a single shared\n")
+cat("    curve and the rejection IS the displacement between curves.)\n")
+cat("    Wording: this model is LINEAR in time, so the sentence should read\n")
+cat("    \"adjusting for time since infection\", not \"allowing flexibility for\n")
+cat("    the effect of time\" -- that phrase describes s(Time), which is not\n")
+cat("    fitted. The spline-adjusted wording belongs to the reciprocal test\n")
+cat("    (gam_health_flex) reported below.\n")
 # All rows below come from one fit (gam_health_flex).
 # Manuscript sentence (robustness check, health component):
 #   "health still declined with time (edf = 4.3; -0.17 units/h; p < 0.001;
@@ -3188,13 +3447,104 @@ mn("residual deviance m_F",      m_F$deviance,  NA)
 # above because the caption quotes a different mix of models, and two of its
 # numbers were found to be wrong.
 # -----------------------------------------------------------------------------
-mn_sub("figure S4 caption, panel D  [m_D: lm(h ~ Time + log_CFU)]")
+# ---------------------------------------------------------------------------
+# Figure 3B caption. Same fit as the Figure S1 diagnostic panels, transposed:
+# there survival is plotted against time at fixed burden, here against burden at
+# fixed time. The repeated beta_t is deliberate, and the ESM caption should say
+# so, otherwise the same number appearing twice reads as a copy-paste slip.
+# ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# HOW THE MAIN-TEXT AND ESM PANELS RELATE. Two different situations -- do not
+# describe them the same way in the captions.
+#
+#   3B and S1F are the SAME PLOT: survival against log10 CFU, curves by time,
+#     from the same fit (m_cond). They differ only in which null is overlaid,
+#     and therefore which independence is rejected:
+#       3B  overlays alive ~ log_CFU   (burden only)  -> rejects s _||_ t | p,
+#           beta_t = -0.22
+#       S1F overlays survival ~ Time   (time only)    -> rejects s _||_ p | t,
+#           beta_p = -1.64
+#     So it is not redundancy: one fit, two nulls, two tests. A reader still
+#     sees the same points and the same solid curves twice, so the S1 caption
+#     needs a clause saying F is the same fit as figure 3B annotated for the
+#     reciprocal test. (Dropping S1F and putting both nulls on 3B is the
+#     alternative, at the cost of a busier panel.)
+#
+#   S1E is the TRANSPOSE of 3B (survival against time, curves by burden), not a
+#     duplicate of it.
+#
+#   4C and S3D are TRANSPOSES of one fit (m_D / m_hp): 4C is h against burden at
+#     fixed times (beta_p = -0.66), S3D is h against time at fixed burdens
+#     (beta_t = -0.17). Same clause needed in the S3 caption.
+# ---------------------------------------------------------------------------
+mn_sub("panel pairings  [same fit shown twice -- say so in the ESM captions]")
+mn("3B and S1F: same model object?",
+   as.numeric(isTRUE(all.equal(unname(coef(m_cond)), unname(coef(m_cond))))), 1, 0)
+mn("  3B  beta_t | p   (null = alive ~ log_CFU)", cf(m_cond, "Time"),    -0.22, 2)
+mn("  S1F beta_p | t   (null = survival ~ Time)", cf(m_cond, "log_CFU"), -1.64, 3)
+mn("4C and S3D: same model object?",
+   as.numeric(isTRUE(all.equal(unname(coef(m_hp)), unname(coef(m_D)), tolerance = 1e-10))), 1, 0)
+mn("  4C  beta_p | t", cf(m_D, "log_CFU"), -0.66, 2)
+mn("  S3D beta_t | p", cf(m_D, "Time"),    -0.17, 2)
+cat("    3B and S1F are the same geometry, not transposes: both plot survival\n")
+cat("    against log10 CFU with curves by time. S1E is the transpose. 4C and\n")
+cat("    S3D genuinely are transposes of each other.\n")
+cat("    NOTE the two panels are not drawn identically: 3B bins time into\n")
+cat("    tertiles (curves at 8/20/32 h, each clipped to its band's burden\n")
+cat("    range), while S1F bins at 0-12/12-24/24-48 h (curves at 6/18/30 h,\n")
+cat("    unclipped). Same fit, different display. If both stay in the paper it\n")
+cat("    is worth making them match, or the difference reads as an error.\n")
+
+mn_sub("figure 3B caption  [m_cond; S1F is the same plot with the other null]")
+mn("beta_t per hour",            cf(m_cond, "Time"),    -0.22, 2)
+mn("p_t",                        pv(m_cond, "Time"),     0.009, 1)
+mn("beta_logCFU (same model)",   cf(m_cond, "log_CFU"),  NA, 3)
+mn("odds ratio per hour",        exp(coef(m_cond)["Time"]), NA, 3)
+rpt3b <- vapply(levels(dat_fig3b$t_band), function(b) {
+  median(dat_fig3b$Time[dat_fig3b$t_band == b]) }, numeric(1))
+mn("curve times: Early / Mid / Late (h)", rpt3b, NA, 0)
+cat("    These are simultaneously the tertile medians and the 15th / 50th /\n")
+cat("    85th percentiles of sampling time, so the caption may quote either.\n")
+
+# How much burden range do the bands actually share? This decides whether the
+# caption can claim a matched-density comparison across all three curves.
+band_rng <- dat_fig3b %>%
+  group_by(t_band) %>%
+  summarise(lo = min(log_CFU), hi = max(log_CFU), n = dplyr::n(), .groups = "drop")
+ov <- function(a, b) {
+  ra <- band_rng[band_rng$t_band == a, ]; rb <- band_rng[band_rng$t_band == b, ]
+  max(0, min(ra$hi, rb$hi) - max(ra$lo, rb$lo))
+}
+rpt_sub <- function(lbl, v, d = 2) mn(lbl, v, NA, d)
+cat("\n    burden support per band (log10 CFU):\n")
+for (i in seq_len(nrow(band_rng)))
+  cat(sprintf("      %-6s %.2f - %.2f   (n = %d)\n", band_rng$t_band[i],
+              band_rng$lo[i], band_rng$hi[i], band_rng$n[i]))
+mn("overlap Early-Mid  (log10 units)",  ov("Early", "Mid"),  NA, 2)
+mn("overlap Early-Late (log10 units)",  ov("Early", "Late"), NA, 2)
+mn("overlap Mid-Late   (log10 units)",  ov("Mid", "Late"),   NA, 2)
+mn("range common to ALL THREE bands",
+   max(0, min(band_rng$hi) - max(band_rng$lo)), NA, 2)
+cat("    CAPTION WARNING. There is no burden at which all three curves are\n")
+cat("    simultaneously supported, so 'at matched density' cannot be read off a\n")
+cat("    single vertical slice through all three. Early larvae never exceeded\n")
+cat("    log10 CFU 3.7 and late larvae never fell below 4.6 -- that is the\n")
+cat("    biology, not a plotting choice, and no clipping rule recovers it.\n")
+cat("    Two defensible readings:\n")
+cat("      (1) Mid vs Late DO share 3.0 log units, so that pair is a genuine\n")
+cat("          matched-density comparison and can be described as such.\n")
+cat("      (2) All three solid curves are displaced from the SAME grey null, in\n")
+cat("          time order. That reading needs no mutual overlap and is what the\n")
+cat("          regression actually tests, since it conditions on log_CFU across\n")
+cat("          the full range.\n")
+
+mn_sub("figure S3 caption, panel D  [m_D: lm(h ~ Time + log_CFU)]")
 mn("beta_Time",                  cf(m_D, "Time"), -0.17)
 cat("    ^ caption currently prints -0.16; the value is -0.166, which rounds\n")
 cat("      to -0.17. -0.16 is a truncation, not a rounding.\n")
 mn_lt("caption claims p < 0.001", pv(m_D, "Time"), 0.001)
 
-mn_sub("figure S4 caption, panel E")
+mn_sub("figure S3 caption, panel E")
 mn("beta_h  [PENALISED, per SD, fit_logistf]",
    lfb(fit_logistf, "scaled_health_combined"), 4.71)
 cat("    ^ caption currently prints 4.66; the current value is 4.71.\n")
@@ -3213,7 +3563,7 @@ cat("       unreliable here because health nearly separates survival. The LRT\n"
 cat("       (0.43) or the penalised profile p (0.74) is the defensible choice.\n")
 cat("       All three support the null, so only the quoted number changes.\n")
 
-mn_sub("figure S4 caption, panel F  [m_F: glm(survival ~ Time + h)]")
+mn_sub("figure S3 caption, panel F  [m_F: glm(survival ~ Time + h)]")
 mn("beta_Time  [RAW, unpenalised]", cf(m_F, "Time"), -0.012)
 mn("  Wald p_Time", pv(m_F, "Time"), 0.93, 2)
 mn("  LRT  p_Time (m_F_null vs m_F)", lrt(m_F_null, m_F), 0.93, 2)
@@ -3398,7 +3748,7 @@ cat("    scale (larger because it undoes the 0-7 floor/ceiling compression).\n")
 cat("    Quote whichever the text defines, but quote beta, F and p from the SAME fit.\n")
 
 
-mn_sec("SUPPLEMENTARY NOTE S2  Cumulative burden (Sum p) vs time  [figure S2]")
+mn_sec("SUPPLEMENTARY NOTE S2  Cumulative burden (Sum p) vs time  [figure S4]")
 cat("  Sum p is a deterministic function of the fitted growth curve, so in a\n")
 cat("  cross-sectional design it carries almost no information beyond sampling\n")
 cat("  time. How strong that is depends on the SCALE, and the note must say which.\n\n")
@@ -3450,6 +3800,20 @@ mn("profile p_time",             lfp(lf_time, "scaled_time"),                0.9
 mn("mean sampling time (h)",     mean(burden_tidy_time$Time), 19.9, 3)
 mn("SD sampling time (h)",       sd(burden_tidy_time$Time),   10.4, 3)
 
+# Both come from the SAME fit and the same n = 86 sample: the correlation is
+# between the two predictors of m_D, and the VIF is m_D's own. Note they are not
+# independent checks -- for a two-predictor model VIF = 1/(1 - r^2) exactly, so
+# the identity row below must hold by construction. It is kept because it makes
+# the provenance explicit: quoting r and VIF together is quoting one number
+# twice, and both must move together if the sample changes.
+mn("r(Time, log_CFU)  [predictors of m_D]",
+   cor(dat_fig5$Time, dat_fig5$log_CFU), 0.862)
+mn("VIF  [read from m_D itself]", max(vif(m_D)), 3.9, 2)
+mn("  identity check: 1/(1 - r^2)",
+   1 / (1 - cor(dat_fig5$Time, dat_fig5$log_CFU)^2), NA, 4)
+mn("  n for both", nrow(dat_fig5), NA, 0)
+mn("beta_logCFU (h ~ t + p)",      cf(m_D, "log_CFU"), -0.658)
+mn("p_logCFU   (h ~ t + p)",       pv(m_D, "log_CFU"),  0.0017, 2)
 # --- close the statistics file ----------------------------------------------
 # Defensive: drain any sink left open (e.g. if a section errored part-way) and
 # tolerate an already-closed connection, so the file is always flushed and the

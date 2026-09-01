@@ -3,7 +3,7 @@ STATISTICS FOR THE MANUSCRIPT
 Host-health integrates infection history to determine survival
 during acute Pseudomonas aeruginosa infection
 ============================================================================== 
-Generated: 2026-08-24 16:34:27
+Generated: 2026-09-01 14:08:50
 Script:    main_cleaned.R
 R:         R version 4.6.0 (2026-04-24)
 
@@ -45,7 +45,20 @@ SAMPLE SIZES AND DATA DECISIONS
   n, antibiotic cohort (plated)                120                   
   n, CIP-treated with a recorded delay         100                     [ok]
   Health index = activity + melanization, both RAW (higher = healthier).
-  Standardisation is applied after filter(Time < 37).
+  The 48 h sample is excluded at the TOP of the data-preparation pipeline
+  (filter(Time < 37) on the raw burden table), so the 4-36 h window and
+  n = 86 apply to EVERY analysis in the paper -- the conditional-
+  independence tests, the T50 fits, the GAMs and the SEM alike. It is not
+  a standardisation choice; standardisation merely happens after it.
+  Maximum Time in each analysis frame (all should read 36):
+    burden_tidy_time   n =  86   max Time = 36 h
+    dat_fig3           n =  86   max Time = 36 h
+    dat_fig3b          n =  86   max Time = 36 h
+    dat_fig4d          n =  86   max Time = 36 h
+    dat_fig5           n =  86   max Time = 36 h
+    dat_cs             n =  86   max Time = 36 h
+    dat_fig5_mel       n =  86   max Time = 36 h
+    burden_tidy_alive  n =  49   max Time = 32 h  (survivors only)
 
 ==============================================================================
 ABSTRACT
@@ -137,7 +150,28 @@ RESULTS (c)  Host health  [figure 4]
   beta_Time                                    -0.166                  [ok]
   p_Time                                       2.1e-06                 [ok]
   beta_logCFU                                  -0.658                  [ok]
+    p_logCFU                                   0.002                   [ok]
   R-squared                                    0.75                    [ok]
+
+--- figure 4C caption  [same fit, plotted h vs p at fixed t] ---
+  beta_p per log10 CFU                         -0.66                   [ok]
+  p_p                                          0.002                   [ok]
+  beta_Time (same model)                       -0.166                
+  agrees with m_D to 10 dp?                    1                       [ok]
+  panel C null rejected: p_p < 0.05            0.00174                 [ok: < 0.05]
+    Panel C reads slope-versus-flat, NOT gap. Each band's dashed null is
+    flat because under h _||_ p | t health depends on time alone; the solid
+    line for the same band slopes. A fitted line and a flat line at the same
+    conditional mean cross exactly once, so the gap between them is zero
+    somewhere in every band and means nothing. Describe the rejection as
+    the solid lines sloping while the nulls do not.
+    (Figure 3B is the opposite case: there the null is a single shared
+    curve and the rejection IS the displacement between curves.)
+    Wording: this model is LINEAR in time, so the sentence should read
+    "adjusting for time since infection", not "allowing flexibility for
+    the effect of time" -- that phrase describes s(Time), which is not
+    fitted. The spline-adjusted wording belongs to the reciprocal test
+    (gam_health_flex) reported below.
   spline-adjusted beta_Time (units/h)          -0.172                  [ok]
   spline-adjusted p_Time                       4.45e-08                [ok]
     text claims p < 0.001                      4.45e-08                [ok: < 0.001]
@@ -170,13 +204,59 @@ RESULTS (c)  Host health  [figure 4]
   residual deviance m_E                        10.3                  
   residual deviance m_F                        10.9                  
 
---- figure S4 caption, panel D  [m_D: lm(h ~ Time + log_CFU)] ---
+--- panel pairings  [same fit shown twice -- say so in the ESM captions] ---
+  3B and S1F: same model object?               1                       [ok]
+    3B  beta_t | p   (null = alive ~ log_CFU)  -0.22                   [ok]
+    S1F beta_p | t   (null = survival ~ Time)  -1.64                   [ok]
+  4C and S3D: same model object?               1                       [ok]
+    4C  beta_p | t                             -0.66                   [ok]
+    S3D beta_t | p                             -0.17                   [ok]
+    3B and S1F are the same geometry, not transposes: both plot survival
+    against log10 CFU with curves by time. S1E is the transpose. 4C and
+    S3D genuinely are transposes of each other.
+    NOTE the two panels are not drawn identically: 3B bins time into
+    tertiles (curves at 8/20/32 h, each clipped to its band's burden
+    range), while S1F bins at 0-12/12-24/24-48 h (curves at 6/18/30 h,
+    unclipped). Same fit, different display. If both stay in the paper it
+    is worth making them match, or the difference reads as an error.
+
+--- figure 3B caption  [m_cond; S1F is the same plot with the other null] ---
+  beta_t per hour                              -0.22                   [ok]
+  p_t                                          0.009                   [ok]
+  beta_logCFU (same model)                     -1.64                 
+  odds ratio per hour                          0.8                   
+  curve times: Early / Mid / Late (h)          8, 20, 32             
+    These are simultaneously the tertile medians and the 15th / 50th /
+    85th percentiles of sampling time, so the caption may quote either.
+
+    burden support per band (log10 CFU):
+      Early  1.13 - 3.67   (n = 29)
+      Mid    3.58 - 7.58   (n = 30)
+      Late   4.57 - 8.17   (n = 27)
+  overlap Early-Mid  (log10 units)             0.096                 
+  overlap Early-Late (log10 units)             0                     
+  overlap Mid-Late   (log10 units)             3                     
+  range common to ALL THREE bands              0                     
+    CAPTION WARNING. There is no burden at which all three curves are
+    simultaneously supported, so 'at matched density' cannot be read off a
+    single vertical slice through all three. Early larvae never exceeded
+    log10 CFU 3.7 and late larvae never fell below 4.6 -- that is the
+    biology, not a plotting choice, and no clipping rule recovers it.
+    Two defensible readings:
+      (1) Mid vs Late DO share 3.0 log units, so that pair is a genuine
+          matched-density comparison and can be described as such.
+      (2) All three solid curves are displaced from the SAME grey null, in
+          time order. That reading needs no mutual overlap and is what the
+          regression actually tests, since it conditions on log_CFU across
+          the full range.
+
+--- figure S3 caption, panel D  [m_D: lm(h ~ Time + log_CFU)] ---
   beta_Time                                    -0.166                  [ok]
     ^ caption currently prints -0.16; the value is -0.166, which rounds
       to -0.17. -0.16 is a truncation, not a rounding.
   caption claims p < 0.001                     2.14e-06                [ok: < 0.001]
 
---- figure S4 caption, panel E ---
+--- figure S3 caption, panel E ---
   beta_h  [PENALISED, per SD, fit_logistf]     4.71                    [ok]
     ^ caption currently prints 4.66; the current value is 4.71.
   caption claims profile p_h < 1e-6            1.35e-07                [ok: < 1e-06]
@@ -193,7 +273,7 @@ RESULTS (c)  Host health  [figure 4]
        (0.43) or the penalised profile p (0.74) is the defensible choice.
        All three support the null, so only the quoted number changes.
 
---- figure S4 caption, panel F  [m_F: glm(survival ~ Time + h)] ---
+--- figure S3 caption, panel F  [m_F: glm(survival ~ Time + h)] ---
   beta_Time  [RAW, unpenalised]                -0.012                  [ok]
     Wald p_Time                                0.93                    [ok]
     LRT  p_Time (m_F_null vs m_F)              0.93                    [ok]
@@ -456,7 +536,7 @@ RESULTS (e)  Antibiotic timing  [figure 6]
     Quote whichever the text defines, but quote beta, F and p from the SAME fit.
 
 ==============================================================================
-SUPPLEMENTARY NOTE S2  Cumulative burden (Sum p) vs time  [figure S2]
+SUPPLEMENTARY NOTE S2  Cumulative burden (Sum p) vs time  [figure S4]
 ==============================================================================
   Sum p is a deterministic function of the fitted growth curve, so in a
   cross-sectional design it carries almost no information beyond sampling
@@ -509,3 +589,9 @@ ESM cross-checks
   profile p_time                               0.991                   [ok]
   mean sampling time (h)                       19.9                    [ok]
   SD sampling time (h)                         10.4                    [ok]
+  r(Time, log_CFU)  [predictors of m_D]        0.862                   [ok]
+  VIF  [read from m_D itself]                  3.9                     [ok]
+    identity check: 1/(1 - r^2)                3.885                 
+    n for both                                 86                    
+  beta_logCFU (h ~ t + p)                      -0.658                  [ok]
+  p_logCFU   (h ~ t + p)                       0.0017                  [ok]
