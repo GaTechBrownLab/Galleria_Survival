@@ -36,7 +36,7 @@ All inputs are comma-separated files in `data/`. The first five drive the infect
 | `control_survival.csv` | one row per hour | Same four columns for the uninfected / vehicle-control cohort. |
 | `bacterial_burden.csv` | one row per plate | Replicate colony counts (`rep1`–`rep4`) for destructively sampled larvae over the time course, with the `Dilution`, `Volume_ul` and `Buffer_dilution_factor` needed to convert them to CFU per larva. `Countable` marks unreadable plates. Carries **no** live/dead status — that is joined in from `health_assesment.csv`. |
 | `health_assesment.csv` | one row per larva | `activity`, `melanization` and `survival` for the time-course cohort. The first two are the components of the composite health index; `survival` supplies the live/dead status used throughout. |
-| `time_to_death.csv` | one row per larva | Recorded time of death, used only for the post-mortem burden check (Fig S1). |
+| `time_to_death.csv` | one row per larva | Recorded time of death, used only for the post-mortem burden check (Fig S2). |
 | `bacterial_burden_ab.csv` | one row per plate | Replicate colony counts (`rep1`–`rep5`) at the 24 h endpoint of the antibiotic experiment, with the same dilution columns. |
 | `health_assesment_ab.csv` | one row per larva | Antibiotic experiment: `Treatment`, the injection / treatment / sampling clock times, and `Activity`, `Melanization`, `Survival`. The injection-to-treatment delay used in Fig 6D–F is derived from the clock times. |
 
@@ -73,7 +73,11 @@ Larvae yielding no colonies on any plate therefore enter the analysis at **LOD/2
 
 In the antibiotic cohort the same rule applies per larva. One larva (G4 L20) had a dedicated 100 µl plate reading zero alongside a 10 µl spot on a shared plate reading 2 colonies; because multi-sample spot plates are prone to carryover, that spot is excluded and the larva enters at LOD/2.
 
-All standardised variables (`scaled_time`, `scaled_cfu`, `scaled_health`, …) are computed **after** the `Time < 37` filter, so they are standardised on the sample the models actually use.
+### The analysis window
+
+`filter(Time < 37)` is applied at the **top** of the data-preparation pipeline, on the raw burden table. The 48 h sample is therefore absent from every downstream object, and the **4–36 h window and n = 86 apply to the whole paper** — the conditional-independence tests, the T50 fits, the GAMs and the SEM alike, not only to the SEM. Every analysis frame (`dat_fig3`, `dat_fig3b`, `dat_fig4d`, `dat_fig5`, `dat_cs`, `dat_fig5_mel`) carries the same 86 larvae with a maximum sampling time of 36 h; the statistics file prints this for each one.
+
+This matters for two reasons. It is **not** a standardisation choice — standardisation merely happens after it, so describing the restriction as something the SEM does would imply the conditional-independence tests used a wider window. And any figure legend binned by time must stop at 36 h: bin labels are derived from the data rather than hard-coded, because a literal "24–48 h" label described a range the top bin never contains.
 
 ## Requirements
 
@@ -130,8 +134,8 @@ A seed is set at each stochastic step — the growth and T50 bootstraps each see
 |------|-------------------|
 | `figure1.pdf` | **Fig 1** — The five candidate causal structures (burden-driven, intrinsic decline, immune collapse, instantaneous damage, cumulative damage). |
 | `figure2.pdf` | **Fig 2** — Survival curves with Gompertz fit and instantaneous mortality *m(t)* inset, plus the growth and burden-to-mortality mapping the burden-driven reading requires. |
-| `figure3.pdf` | **Fig 3** — Logistic pathogen growth across the live–dead threshold (all larvae vs. survivors only). |
-| `figure4.pdf` | **Fig 4** — Activity (A) and melanization (B) against pathogen burden, coloured by time, with the AT50 / MT50 / LT50 transition timing (C). |
+| `figure3.pdf` | **Fig 3** — (A) Logistic pathogen growth across the live–dead threshold (all larvae vs. survivors only). (B) Survival against burden at three sampling times, with the burden-driven null. |
+| `figure4.pdf` | **Fig 4** — Activity (A) and melanization (B) against pathogen burden, coloured by time; composite health against burden at three sampling times (C); AT50 / MT50 / LT50 transition timing (D). |
 | `figure5.pdf` | **Fig 5** — Bayesian SEM path effects as full posterior distributions, faceted by outcome equation, with the fitted DAG inset. The time route is shown as a marginal effect at three sampling times. |
 | `figure6.pdf` | **Fig 6** — Timed ciprofloxacin intervention. Top row: grouped summaries of survival (A), burden (B), health (C). Bottom row: the continuous per-larva dose–response against injection-to-treatment delay, in the same order (D–F). |
 
@@ -139,12 +143,39 @@ A seed is set at each stochastic step — the growth and T50 bootstraps each see
 
 | File | Manuscript figure |
 |------|-------------------|
-| `figureS1.pdf` | **Fig S1** — Post-mortem bacterial-burden stability (CFU vs. time since death). |
-| `figureS2.pdf` | **Fig S2** — Cumulative-burden estimation methods and the burden–time collinearity (supports Supplementary Note S2). |
-| `figureS3.pdf` | **Fig S3** — Implied *m(p)* mapping with its pole at carrying capacity, three-node pathogen DAGs, and conditional-independence diagnostics (supports Note S3). |
-| `figureS4.pdf` | **Fig S4** — Four-node health DAGs and conditional-independence diagnostics (supports Note S3). |
+| `figureS1.pdf` | **Fig S1** — Implied *m(p)* mapping with its pole at carrying capacity, three-node pathogen DAGs, and conditional-independence diagnostics. |
+| `figureS2.pdf` | **Fig S2** — Post-mortem bacterial-burden stability (CFU vs. time since death). |
+| `figureS3.pdf` | **Fig S3** — Four-node health DAGs and conditional-independence diagnostics. Panels D–F are the transposes of Figures 3B and 4C, read off the same two fits. |
+| `figureS4.pdf` | **Fig S4** — Cumulative-burden estimation methods and the burden–time collinearity (supports Supplementary Note S2). |
+
+Supplementary figures are numbered by float order in the manuscript, which is **not** the order the script produces them in. The filenames were previously offset from the printed numbers; they now agree, so `figureS1.pdf` is Figure S1. If the supplement is reordered, change the `ggsave` targets to match rather than renaming files by hand.
 
 All ten figures are written directly by `main.R` and need no further editing.
+
+### Paired panels
+
+Several panels show the same fit more than once, and they do it in two different ways. Each pair is read off **one** model — `main.R` fits it once and reuses it, and the statistics file carries an identity check — so a coefficient repeated across two captions is deliberate. Say so in the ESM captions, or the repetition reads as a copy-paste error.
+
+**Figures 3B and S1F are the same plot**, not transposes: both show survival against log₁₀ CFU with curves by sampling time, from the same fit (`m_cond`). What differs is the null overlaid on them, and therefore which independence is being rejected:
+
+| Panel | Null overlaid | Rejects | Quoted |
+|-------|---------------|---------|--------|
+| 3B | `alive ~ log_CFU` (burden only) | *s* ⊥ *t* \| *p* | β_t = −0.22 |
+| S1F | `survival ~ Time` (time only) | *s* ⊥ *p* \| *t* | β_p = −1.64 |
+
+So it is one fit carrying two tests, not redundancy — but a reader still meets the same points and the same solid curves twice, so S1's caption needs a clause identifying F as figure 3B annotated for the reciprocal test. **S1E** is the transpose of 3B (survival against time, curves by burden); it is not the duplicate.
+
+Note the two are not drawn identically: 3B bins time into tertiles (curves at 8/20/32 h, each clipped to its band's burden range) while S1F bins at 0–12/12–24/24–48 h (curves at 6/18/30 h, unclipped). Same fit, different display. If both stay in the paper, they are worth harmonising.
+
+**Figures 4C and S3D are genuine transposes** of one fit (`m_D`): 4C plots health against burden at fixed times (β_p = −0.66), S3D plots health against time at fixed burdens (β_t = −0.17). The same cross-reference clause applies to the S3 caption.
+
+Solid lines are the tested model, dashed the null — but the two panels reject their nulls differently, and the captions should not use the same phrasing. In **3B** the null has no time term, so its three band-curves coincide into one grey reference and the rejection is the *displacement* of the solid curves from it, in time order. In **4C** the null has no burden term, so each band's null is a *flat* line and the rejection is that the solid lines *slope*. A fitted line and a flat line at the same conditional mean must cross exactly once, so the gap between them is zero somewhere in every band and means nothing: do not describe 4C as "the gap between the curves".
+
+Time is encoded as the same three sampling-time tertiles (Early 4–12 h, Mid 16–24 h, Late 28–36 h) in Figures 3B and 4A–C, with one palette defined once as `pal_tband`. Panels 4A and 4B previously used a continuous colourbar for the same variable, which put two encodings of time in one figure.
+
+In 4C each line is drawn only where its own prediction lies inside the observable 0–7 score range. Early larvae sit at the ceiling, so the common-slope model predicts above the maximum possible score at low burden for early times; the Early solid line is consequently short (0.8 of the 7 log units on the x axis). That is the bounded-index attenuation the ESM describes, not a plotting artefact, and the censored `survreg` check is the robustness analysis for it. Curves are clipped to the range of the x variable observed within each band, because the time bands barely overlap in burden (Early 1.1–3.7, Mid 3.6–7.6, Late 4.6–8.2 log₁₀ CFU) and an unclipped curve would be mostly extrapolation. In 3B the null has no time term, so its three band-curves coincide and it is drawn once, in grey.
+
+The bands barely share an x-range, and that is biology rather than a plotting choice: early larvae never exceeded log₁₀ CFU 3.7 and late larvae never fell below 4.6, so **no burden is simultaneously supported by all three curves**. Mid and Late do share 3.0 log units, which is a genuine matched-density comparison. For all three, the defensible reading is that each solid curve is displaced from the *same* grey null, in time order — that needs no mutual overlap, and it is what the regression actually tests, since it conditions on burden across the full range. The statistics file prints the per-band support and every pairwise overlap.
 
 ### DAG rendering
 
