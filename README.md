@@ -1,4 +1,4 @@
-# Infection history decouples pathogen burden from survival during acute *Pseudomonas aeruginosa* infection
+# Host health links infection history to survival during acute *Pseudomonas aeruginosa* infection
 
 Analysis code and data for a study of within-host infection dynamics in *Galleria mellonella* larvae infected with *Pseudomonas aeruginosa* (strain PAO1). The central finding is that host survival during acute infection is governed by **cumulative host damage** — captured through a composite health index, the temporal structure of the infection, and a timed antibiotic intervention — rather than by the **instantaneous pathogen burden** a host carries at any single moment.
 
