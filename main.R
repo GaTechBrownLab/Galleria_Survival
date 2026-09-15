@@ -1,6 +1,6 @@
 # Analysis code for (Working title) "Host-health integrates infection history to 
 # determine survival during acute \textit{Pseudomonas aeruginosa} infection"
-# Author: Canan Karakoç
+# Author: Anonymised for review.
 # ---------------------------------------------------------------------------
 
 # Load required libraries

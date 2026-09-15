@@ -230,5 +230,4 @@ MIT
 
 ## Contact
 
-Corresponding author: Sam P. Brown (sam.brown@biology.gatech.edu).
-Code: Canan Karakoç (canankarakoc@gmail.com).
+Anonymised for review.
