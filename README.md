@@ -81,7 +81,7 @@ This matters for two reasons. It is **not** a standardisation choice — standar
 
 ## Requirements
 
-- **R** ≥ 4.1 (results in the manuscript were produced under 4.5.2)
+- **R** ≥ 4.1 (results in the manuscript were produced under 4.6.0)
 - The packages below, grouped by role.
 
 ```r
@@ -108,7 +108,7 @@ install.packages(c(
 ## Running the analysis
 
 1. Clone the repository and place the seven data files in `data/`.
-2. Run from the repository root — most simply by opening `Galleria_Survival.Rproj` in RStudio. The script does not set a working directory of its own; it checks that `data/` is visible and stops with a clear message if it is not. If you need to point it somewhere else, uncomment and edit the line near the top:
+2. Run from the repository root — for example by setting the working directory there in RStudio or a plain R session (`Galleria_Survival.Rproj` is gitignored, so a fresh clone does not include it). The script does not set a working directory of its own; it checks that `data/` is visible and stops with a clear message if it is not. If you need to point it somewhere else, uncomment and edit the line near the top:
 
    ```r
    # setwd("~/Documents/GitHub/Galleria_Survival")
@@ -146,7 +146,7 @@ A seed is set at each stochastic step — the growth and T50 bootstraps each see
 | `figureS1.pdf` | **Fig S1** — Implied *m(p)* mapping with its pole at carrying capacity, three-node pathogen DAGs, and conditional-independence diagnostics. |
 | `figureS2.pdf` | **Fig S2** — Post-mortem bacterial-burden stability (CFU vs. time since death). |
 | `figureS3.pdf` | **Fig S3** — Four-node health DAGs and conditional-independence diagnostics. Panels D–F are the transposes of Figures 3B and 4C, read off the same two fits. |
-| `figureS4.pdf` | **Fig S4** — Cumulative-burden estimation methods and the burden–time collinearity (supports Supplementary Note S2). |
+| `figureS4.pdf` | **Fig S4** — Cumulative-burden estimation methods and the burden–time collinearity (supports Supplementary Note S4). |
 
 Supplementary figures are numbered by float order in the manuscript, which is **not** the order the script produces them in. The filenames were previously offset from the printed numbers; they now agree, so `figureS1.pdf` is Figure S1. If the supplement is reordered, change the `ggsave` targets to match rather than renaming files by hand.
 
@@ -208,21 +208,21 @@ The script proceeds through the following stages:
 1. **Candidate causal structures.** Draw the five hypotheses as DAGs (Fig 1). Schematic only; no statistics.
 2. **Data loading and health index.** Read the survival, burden, health, time-to-death, and control data; apply the detection limit; construct the activity + melanization composite health score (higher = healthier).
 3. **Survival and mortality.** Fit survival curves and Gompertz mortality models, and show what a strictly burden-driven account would require (Fig 2).
-4. **Pathogen growth.** Compare logistic, exponential, and linear growth models for bacterial burden — fit to all larvae and to survivors only to expose survivor bias (Fig 3) — check post-mortem burden stability (Fig S1), and derive the implied instantaneous-mortality mapping *m(p)* (a panel of Fig S3).
+4. **Pathogen growth.** Compare logistic, exponential, and linear growth models for bacterial burden — fit to all larvae and to survivors only to expose survivor bias (Fig 3) — check post-mortem burden stability (Fig S2), and derive the implied instantaneous-mortality mapping *m(p)* (a panel of Fig S1).
 5. **Health dynamics.** Characterise activity and melanization trajectories and their timing (AT50, MT50, LT50) relative to burden (Fig 4).
-6. **Causal analysis.** Build candidate DAGs and run conditional-independence tests for the three-node pathogen (Fig S3) and four-node health (Fig S4) structures, including the melanization-only sensitivity analysis and a censored-regression robustness check for the 0–7 floor and ceiling of the health score.
+6. **Causal analysis.** Build candidate DAGs and run conditional-independence tests for the three-node pathogen (Fig S1) and four-node health (Fig S3) structures, including the melanization-only sensitivity analysis and a censored-regression robustness check for the 0–7 floor and ceiling of the health score.
 7. **Structural equation model.** Fit Bayesian SEMs of the supported causal structure (*t → p → h → s* with *t → h*) in a linear and a quadratic-in-time form, and summarise the health-mediated effects as posterior distributions (Fig 5). Because the quadratic model makes the *t → h* path depend on when the larva was sampled, that path is reported as a marginal effect at three sampling times rather than as a single coefficient.
 8. **Antibiotic intervention.** Analyse the ciprofloxacin treatment-timing experiment, both by treatment group and as a continuous per-larva dose–response against injection-to-treatment delay (Fig 6).
-9. **Supplementary cumulative-burden analysis.** Re-express pre-treatment exposure as the integral of fitted logistic growth (Σp), test whether it adds information beyond time, and document the cumulative-burden / sampling-time collinearity (Fig S2; Supplementary Note S2).
+9. **Supplementary cumulative-burden analysis.** Re-express pre-treatment exposure as the integral of fitted logistic growth (Σp), test whether it adds information beyond time, and document the cumulative-burden / sampling-time collinearity (Fig S4; Supplementary Note S4).
 10. **Manuscript number report.** Recompute every quoted value and write `results/statistics_for_manuscript.txt`.
 
 A note on model comparison in stage 7: the DIC of the no-mediation model is **not** comparable with the two mediation models, because it has no health outcome and so sums deviance over two modelled variables rather than three. Only the linear and quadratic mediation models can be compared on DIC; the no-mediation model is judged on its posterior predictive *p* alone. The statistics file flags this where the numbers are printed.
 
-Note that the script's internal section order does not match the manuscript figure order: Figure 5 (SEM) is produced after Figure S4, and the supplementary figures are interleaved. The `ggsave` filenames are authoritative.
+Note that the script's internal section order does not match the manuscript figure order: the script writes Figures 1, 2, 3, S2, 4, S1, S3, 5, S4, 6 in that order, so Figure 5 (SEM) comes after Figure S3 and before Figure S4. The `ggsave` filenames are authoritative.
 
 ## Citation
 
-Karakoç C, O'Sullivan T, Gurney J, Martigoni M, Wollein Waldetoft K, Brown SP. *Infection history decouples pathogen burden from survival during acute Pseudomonas aeruginosa infection.* (in preparation).
+Anonymised for review.
 
 ## License
 
