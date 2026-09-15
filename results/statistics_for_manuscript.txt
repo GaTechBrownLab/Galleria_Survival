@@ -3,8 +3,8 @@ STATISTICS FOR THE MANUSCRIPT
 Host-health integrates infection history to determine survival
 during acute Pseudomonas aeruginosa infection
 ============================================================================== 
-Generated: 2026-09-01 14:08:50
-Script:    main_cleaned.R
+Generated: 2026-09-15 07:19:32
+Script:    main.R
 R:         R version 4.6.0 (2026-04-24)
 
 Legend:  [ok] recomputed value matches the manuscript
@@ -342,16 +342,26 @@ Parameter Estimates:
 
 
 Regressions:
-                           Estimate  Post.SD pi.lower pi.upper     Rhat    Prior       
-  scaled_cfu ~                                                                         
-    time_linr (t1)            0.876    0.050    0.776    0.975    1.000    normal(0,10)
-    time_sqrd (t2)           -0.261    0.058   -0.373   -0.149    1.000    normal(0,10)
-  scaled_health_combined ~                                                             
-    scaled_cf  (a)           -0.509    0.116   -0.739   -0.278    1.000    normal(0,10)
-    time_linr (h1)           -0.400    0.114   -0.626   -0.174    1.000    normal(0,10)
-    time_sqrd (h2)           -0.204    0.068   -0.338   -0.073    1.000    normal(0,10)
-  survival ~                                                                           
-    scld_hlt_  (b)            0.465    0.020    0.426    0.503    1.000    normal(0,10)
+                           Estimate  Post.SD pi.lower pi.upper     Rhat
+  scaled_cfu ~                                                         
+    time_linr (t1)            0.876    0.050    0.776    0.975    1.000
+    time_sqrd (t2)           -0.261    0.058   -0.373   -0.149    1.000
+  scaled_health_combined ~                                             
+    scaled_cf  (a)           -0.509    0.116   -0.739   -0.278    1.000
+    time_linr (h1)           -0.400    0.114   -0.626   -0.174    1.000
+    time_sqrd (h2)           -0.204    0.068   -0.338   -0.073    1.000
+  survival ~                                                           
+    scld_hlt_  (b)            0.465    0.020    0.426    0.503    1.000
+    Prior       
+                
+    normal(0,10)
+    normal(0,10)
+                
+    normal(0,10)
+    normal(0,10)
+    normal(0,10)
+                
+    normal(0,10)
 
 Variances:
                    Estimate  Post.SD pi.lower pi.upper     Rhat    Prior       
@@ -369,26 +379,46 @@ Defined Parameters:
     indirect_t_men   -0.186    0.054   -0.291   -0.080                         
     indirect_t_lat   -0.376    0.065   -0.504   -0.248                         
 
-                          Estimate    Post.SD   pi.lower   pi.upper       Rhat      Prior         
- "   time_linr (t1)"      "   0.876" "   0.050" "   0.776" "   0.975" "   1.000" "   normal(0,10)"
- "   time_sqrd (t2)"      "  -0.261" "   0.058" "  -0.373" "  -0.149" "   1.000" "   normal(0,10)"
- "   scaled_cf  (a)"      "  -0.509" "   0.116" "  -0.739" "  -0.278" "   1.000" "   normal(0,10)"
- "   time_linr (h1)"      "  -0.400" "   0.114" "  -0.626" "  -0.174" "   1.000" "   normal(0,10)"
- "   time_sqrd (h2)"      "  -0.204" "   0.068" "  -0.338" "  -0.073" "   1.000" "   normal(0,10)"
- "   scld_hlt_  (b)"      "   0.465" "   0.020" "   0.426" "   0.503" "   1.000" "   normal(0,10)"
- "  .scaled_cfu    "      "   0.215" "   0.034" "   0.158" "   0.289" "   1.000" "gamma(1,.5)[sd]"
- "  .scld_hlth_cmbn"      "   0.235" "   0.037" "   0.173" "   0.318" "   1.000" "gamma(1,.5)[sd]"
- "  .survival      "      "   0.033" "   0.005" "   0.024" "   0.044" "   1.000" "gamma(1,.5)[sd]"
- "           time_linear" "   0.988" ""         "        " "        " "        " "               "
- "           time_linear" "   0.053" ""         "        " "        " "        " "               "
- "          time_squared" "   0.765" ""         "        " "        " "        " "               "
- "   t_to_h_early  "      "   0.009" "   0.210" "  -0.404" "   0.421" "        " "               "
- "   t_to_h_mean   "      "  -0.400" "   0.114" "  -0.624" "  -0.176" "        " "               "
- "   t_to_h_late   "      "  -0.808" "   0.136" "  -1.075" "  -0.542" "        " "               "
- "   indirect_p    "      "  -0.236" "   0.055" "  -0.344" "  -0.129" "        " "               "
- "   indirect_t_rly"      "   0.004" "   0.098" "  -0.188" "   0.196" "        " "               "
- "   indirect_t_men"      "  -0.186" "   0.054" "  -0.291" "  -0.080" "        " "               "
- "   indirect_t_lat"      "  -0.376" "   0.065" "  -0.504" "  -0.248" "        " "               "
+                          Estimate    Post.SD   pi.lower   pi.upper  
+ "   time_linr (t1)"      "   0.876" "   0.050" "   0.776" "   0.975"
+ "   time_sqrd (t2)"      "  -0.261" "   0.058" "  -0.373" "  -0.149"
+ "   scaled_cf  (a)"      "  -0.509" "   0.116" "  -0.739" "  -0.278"
+ "   time_linr (h1)"      "  -0.400" "   0.114" "  -0.626" "  -0.174"
+ "   time_sqrd (h2)"      "  -0.204" "   0.068" "  -0.338" "  -0.073"
+ "   scld_hlt_  (b)"      "   0.465" "   0.020" "   0.426" "   0.503"
+ "  .scaled_cfu    "      "   0.215" "   0.034" "   0.158" "   0.289"
+ "  .scld_hlth_cmbn"      "   0.235" "   0.037" "   0.173" "   0.318"
+ "  .survival      "      "   0.033" "   0.005" "   0.024" "   0.044"
+ "           time_linear" "   0.988" ""         "        " "        "
+ "           time_linear" "   0.053" ""         "        " "        "
+ "          time_squared" "   0.765" ""         "        " "        "
+ "   t_to_h_early  "      "   0.009" "   0.210" "  -0.404" "   0.421"
+ "   t_to_h_mean   "      "  -0.400" "   0.114" "  -0.624" "  -0.176"
+ "   t_to_h_late   "      "  -0.808" "   0.136" "  -1.075" "  -0.542"
+ "   indirect_p    "      "  -0.236" "   0.055" "  -0.344" "  -0.129"
+ "   indirect_t_rly"      "   0.004" "   0.098" "  -0.188" "   0.196"
+ "   indirect_t_men"      "  -0.186" "   0.054" "  -0.291" "  -0.080"
+ "   indirect_t_lat"      "  -0.376" "   0.065" "  -0.504" "  -0.248"
+     Rhat      Prior         
+ "   1.000" "   normal(0,10)"
+ "   1.000" "   normal(0,10)"
+ "   1.000" "   normal(0,10)"
+ "   1.000" "   normal(0,10)"
+ "   1.000" "   normal(0,10)"
+ "   1.000" "   normal(0,10)"
+ "   1.000" "gamma(1,.5)[sd]"
+ "   1.000" "gamma(1,.5)[sd]"
+ "   1.000" "gamma(1,.5)[sd]"
+ "        " "               "
+ "        " "               "
+ "        " "               "
+ "        " "               "
+ "        " "               "
+ "        " "               "
+ "        " "               "
+ "        " "               "
+ "        " "               "
+ "        " "               "
 
   Full posterior summary, nested linear comparison model:
 
@@ -407,15 +437,24 @@ Parameter Estimates:
 
 
 Regressions:
-                           Estimate  Post.SD pi.lower pi.upper     Rhat    Prior       
-  scaled_cfu ~                                                                         
-    time_linr (t1)            0.876    0.051    0.776    0.975    1.000    normal(0,10)
-    time_sqrd (t2)           -0.261    0.058   -0.375   -0.149    1.000    normal(0,10)
-  scaled_health_combined ~                                                             
-    scaled_cf  (a)           -0.348    0.110   -0.561   -0.132    1.000    normal(0,10)
-    time_linr (h1)           -0.548    0.110   -0.765   -0.330    1.000    normal(0,10)
-  survival ~                                                                           
-    scld_hlt_  (b)            0.465    0.020    0.426    0.504    1.000    normal(0,10)
+                           Estimate  Post.SD pi.lower pi.upper     Rhat
+  scaled_cfu ~                                                         
+    time_linr (t1)            0.876    0.051    0.776    0.975    1.000
+    time_sqrd (t2)           -0.261    0.058   -0.375   -0.149    1.000
+  scaled_health_combined ~                                             
+    scaled_cf  (a)           -0.348    0.110   -0.561   -0.132    1.000
+    time_linr (h1)           -0.548    0.110   -0.765   -0.330    1.000
+  survival ~                                                           
+    scld_hlt_  (b)            0.465    0.020    0.426    0.504    1.000
+    Prior       
+                
+    normal(0,10)
+    normal(0,10)
+                
+    normal(0,10)
+    normal(0,10)
+                
+    normal(0,10)
 
 Variances:
                    Estimate  Post.SD pi.lower pi.upper     Rhat    Prior       
@@ -428,20 +467,34 @@ Defined Parameters:
     indirect_p       -0.162    0.052   -0.263   -0.061                         
     indirect_t       -0.255    0.052   -0.357   -0.153                         
 
-                          Estimate    Post.SD   pi.lower   pi.upper       Rhat      Prior         
- "   time_linr (t1)"      "   0.876" "   0.051" "   0.776" "   0.975" "   1.000" "   normal(0,10)"
- "   time_sqrd (t2)"      "  -0.261" "   0.058" "  -0.375" "  -0.149" "   1.000" "   normal(0,10)"
- "   scaled_cf  (a)"      "  -0.348" "   0.110" "  -0.561" "  -0.132" "   1.000" "   normal(0,10)"
- "   time_linr (h1)"      "  -0.548" "   0.110" "  -0.765" "  -0.330" "   1.000" "   normal(0,10)"
- "   scld_hlt_  (b)"      "   0.465" "   0.020" "   0.426" "   0.504" "   1.000" "   normal(0,10)"
- "  .scaled_cfu    "      "   0.214" "   0.034" "   0.157" "   0.292" "   1.000" "gamma(1,.5)[sd]"
- "  .scld_hlth_cmbn"      "   0.259" "   0.041" "   0.190" "   0.352" "   1.000" "gamma(1,.5)[sd]"
- "  .survival      "      "   0.033" "   0.005" "   0.024" "   0.044" "   1.000" "gamma(1,.5)[sd]"
- "           time_linear" "   0.988" ""         "        " "        " "        " "               "
- "           time_linear" "   0.053" ""         "        " "        " "        " "               "
- "          time_squared" "   0.765" ""         "        " "        " "        " "               "
- "   indirect_p    "      "  -0.162" "   0.052" "  -0.263" "  -0.061" "        " "               "
- "   indirect_t    "      "  -0.255" "   0.052" "  -0.357" "  -0.153" "        " "               "
+                          Estimate    Post.SD   pi.lower   pi.upper  
+ "   time_linr (t1)"      "   0.876" "   0.051" "   0.776" "   0.975"
+ "   time_sqrd (t2)"      "  -0.261" "   0.058" "  -0.375" "  -0.149"
+ "   scaled_cf  (a)"      "  -0.348" "   0.110" "  -0.561" "  -0.132"
+ "   time_linr (h1)"      "  -0.548" "   0.110" "  -0.765" "  -0.330"
+ "   scld_hlt_  (b)"      "   0.465" "   0.020" "   0.426" "   0.504"
+ "  .scaled_cfu    "      "   0.214" "   0.034" "   0.157" "   0.292"
+ "  .scld_hlth_cmbn"      "   0.259" "   0.041" "   0.190" "   0.352"
+ "  .survival      "      "   0.033" "   0.005" "   0.024" "   0.044"
+ "           time_linear" "   0.988" ""         "        " "        "
+ "           time_linear" "   0.053" ""         "        " "        "
+ "          time_squared" "   0.765" ""         "        " "        "
+ "   indirect_p    "      "  -0.162" "   0.052" "  -0.263" "  -0.061"
+ "   indirect_t    "      "  -0.255" "   0.052" "  -0.357" "  -0.153"
+     Rhat      Prior         
+ "   1.000" "   normal(0,10)"
+ "   1.000" "   normal(0,10)"
+ "   1.000" "   normal(0,10)"
+ "   1.000" "   normal(0,10)"
+ "   1.000" "   normal(0,10)"
+ "   1.000" "gamma(1,.5)[sd]"
+ "   1.000" "gamma(1,.5)[sd]"
+ "   1.000" "gamma(1,.5)[sd]"
+ "        " "               "
+ "        " "               "
+ "        " "               "
+ "        " "               "
+ "        " "               "
 
 ==============================================================================
 RESULTS (e)  Antibiotic timing  [figure 6]
@@ -536,7 +589,7 @@ RESULTS (e)  Antibiotic timing  [figure 6]
     Quote whichever the text defines, but quote beta, F and p from the SAME fit.
 
 ==============================================================================
-SUPPLEMENTARY NOTE S2  Cumulative burden (Sum p) vs time  [figure S4]
+SUPPLEMENTARY NOTE S4  Cumulative burden (Sum p) vs time  [figure S4]
 ==============================================================================
   Sum p is a deterministic function of the fitted growth curve, so in a
   cross-sectional design it carries almost no information beyond sampling
@@ -558,7 +611,7 @@ SUPPLEMENTARY NOTE S2  Cumulative burden (Sum p) vs time  [figure S4]
     implied |r|  = sqrt(1 - 1/VIF)             0.9845                
     VIF that the RAW-scale r would imply       3.36                  
 
-    CONSISTENCY CHECK for the Note S2 text. The VIF comes from a model
+    CONSISTENCY CHECK for the Note S4 text. The VIF comes from a model
     fitted on the LOG scale, so the correlation it implies is the LOG-scale
     one (~0.98), not the raw-scale 0.84. Quoting VIF = 32.6 beside r = 0.84
     is internally inconsistent: r = 0.84 implies VIF = 3.4. Quote either

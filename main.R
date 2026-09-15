@@ -2338,7 +2338,7 @@ pC_supp <- ggplot(method_compare, aes(x = Time, y = log10(cum_burden_integral + 
   labs(x = "Time since infection (hrs)",
        y = expression(log[10](Cumulative~CFU))) +
   # y is log10(Sum p + 1), so this is the log-scale r (0.98). The raw-scale r
-  # is 0.84, which is what the VIF in Note S2 contradicts -- see the report.
+  # is 0.84, which is what the VIF in Note S4 contradicts -- see the report.
   annotate("text", x = 10, y = 8,
            label = paste0("r = ", round(r_time_log, 3)),
            size = 6)+
@@ -3165,7 +3165,7 @@ cat("Host-health integrates infection history to determine survival\n")
 cat("during acute Pseudomonas aeruginosa infection\n")
 cat(strrep("=", 78), "\n")
 cat("Generated: ", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n", sep = "")
-cat("Script:    main_cleaned.R\n")
+cat("Script:    main.R\n")
 cat("R:         ", R.version.string, "\n", sep = "")
 cat("\nLegend:  [ok] recomputed value matches the manuscript\n")
 cat("         [CHECK] they differ -- reconcile before submission\n")
@@ -3748,7 +3748,7 @@ cat("    scale (larger because it undoes the 0-7 floor/ceiling compression).\n")
 cat("    Quote whichever the text defines, but quote beta, F and p from the SAME fit.\n")
 
 
-mn_sec("SUPPLEMENTARY NOTE S2  Cumulative burden (Sum p) vs time  [figure S4]")
+mn_sec("SUPPLEMENTARY NOTE S4  Cumulative burden (Sum p) vs time  [figure S4]")
 cat("  Sum p is a deterministic function of the fitted growth curve, so in a\n")
 cat("  cross-sectional design it carries almost no information beyond sampling\n")
 cat("  time. How strong that is depends on the SCALE, and the note must say which.\n\n")
@@ -3767,7 +3767,7 @@ mn("  implied R-squared between predictors = 1 - 1/VIF",
    1 - 1/max(vif(m_both)), NA, 4)
 mn("  implied |r|  = sqrt(1 - 1/VIF)",    sqrt(1 - 1/max(vif(m_both))), NA, 4)
 mn("  VIF that the RAW-scale r would imply", 1/(1 - r_time_raw^2), NA, 3)
-cat("\n    CONSISTENCY CHECK for the Note S2 text. The VIF comes from a model\n")
+cat("\n    CONSISTENCY CHECK for the Note S4 text. The VIF comes from a model\n")
 cat("    fitted on the LOG scale, so the correlation it implies is the LOG-scale\n")
 cat("    one (~0.98), not the raw-scale 0.84. Quoting VIF = 32.6 beside r = 0.84\n")
 cat("    is internally inconsistent: r = 0.84 implies VIF = 3.4. Quote either\n")
